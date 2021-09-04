@@ -105,4 +105,4 @@ theme: next
 deploy:
   type: git
   repo: https://github.com/SevenNorth/AshesBlog
-  branch: master
+  branch: gh-pages
