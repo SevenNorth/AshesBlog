@@ -13,7 +13,7 @@
   <!-- 本文作者 -->
   <li class="post-copyright-author">
     <strong>{{ __('post.copyright.author') + __('symbol.colon') }} </strong>
-    {{ post.author | default(author) }}
+    {{ post.author | default(config.author) }}
   </li>
 
   <!-- 创建时间 -->
@@ -31,14 +31,14 @@
   <!-- 引用链接 -->
   <li class="post-copyright-link">
     <strong>{{ __('post.copyright.link') + __('symbol.colon') }}</strong>
-    <a href="{{ post.url | default(post.permalink) }}" title="{{ post.title }}"
-      >{{ post.url | default(post.permalink) }}</a
+    <a href="{{ post.url | default(decodeURI(post.permalink)) }}" title="{{ post.title }}"
+      >{{ post.url | default(decodeURI(post.permalink)) }}</a
     >
     <span class="copy-path" title="点击复制引用链接"
       ><i
         style="cursor: pointer"
         class="fa fa-clipboard"
-        data-clipboard-text="[{{ post.author | default(author) }}'s Blog | {{ post.title }}]({{ post.permalink }})"
+        data-clipboard-text="[{{ post.author | default(config.author) }}'s Blog | {{ post.title }}]({{ decodeURI(post.permalink) }})"
         aria-label="{{ __('post.copy_success') }}"
       ></i
     ></span>
