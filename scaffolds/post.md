@@ -5,4 +5,5 @@ tags:
 categories: 
     - []
 updated: {{ date }}
+copyright: true
 ---
