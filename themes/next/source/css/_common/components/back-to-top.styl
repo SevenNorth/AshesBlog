@@ -1,36 +1,23 @@
+
+//自定义回到顶部样式
 .back-to-top {
-  background: $b2t-bg-color;
-  bottom: $b2t-position-bottom;
-  box-sizing: border-box;
-  color: $b2t-color;
-  cursor: pointer;
-  left: $b2t-position-right;
-  opacity: $b2t-opacity;
-  padding: 0 6px;
+  right: 60px;
+  width: 70px;  //图片素材宽度
+  height: 900px;  //图片素材高度
+  top: -900px;
+  bottom: unset;
+  transition: all .5s ease-in-out;
+  background-image: url("/AshesBlog/images/scroll.png");
   position: fixed;
-  transition-property: bottom;
-  z-index: $zindex-3;
+  cursor: pointer;
 
-  if (hexo-config('back2top.scrollpercent')) {
-    width: initial;
-  } else {
-    width: 24px;
-
-    span {
-      display: none;
-    }
-  }
-
-  &:hover {
-    color: $sidebar-highlight;
+  //隐藏箭头图标
+  > i {
+    display: none;
   }
 
   &.back-to-top-on {
-    bottom: $b2t-position-bottom-on;
-  }
-
-  +tablet-mobile() {
-    left: $b2t-position-right-mobile;
-    opacity: $b2t-opacity-hover;
+    bottom: unset;
+    top: 100vh < (900px + 200px) ? calc( 100vh - 900px - 200px ) : 0px;
   }
 }
