@@ -165,7 +165,7 @@ toc:
   enable: true
 
   # Automatically add list number to toc.
-  number: true
+  number: false
 
   # If true, all words will placed on next lines if header width longer then sidebar width.
   wrap: false
@@ -195,10 +195,10 @@ sidebar:
   offset: 12
 
   # Back to top in sidebar (only for Pisces | Gemini).
-  b2t: false
+  b2t: true
 
   # Scroll percent label in b2t button.
-  scrollpercent: false
+  scrollpercent: true
 
   # Enable sidebar on narrow view (only for Muse | Mist).
   onmobile: false
@@ -227,7 +227,9 @@ auto_excerpt:
 post_meta:
   item_text: true
   created_at: true
-  updated_at: true
+  updated_at: 
+    enabled: false 
+    another_day: true
   categories: true
 
 # Post wordcount display settings
@@ -815,3 +817,12 @@ images: images
 
 # Theme version
 version: 5.1.4
+
+# window woblle
+wobble:
+  enable: false  # 是否开启边缘波动效果
+  radius: 50  # 波动半径
+  sidebar: true  # 开启侧边栏边缘摆动
+  header: true  # 开启头部边缘摆动
+  footer: true  # 开启脚部边缘摆动
+  offset: 50

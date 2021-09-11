@@ -4,10 +4,10 @@
 
 # Site
 title: AshesBlog
-subtitle: 'Just do IT!'
+subtitle: '路漫漫其修远兮'
 description: '野渡无人舟自横'
 keywords:
-author: FeiFei
+author: SevenNorth
 language: zh-Hans
 timezone: ''
 
@@ -47,7 +47,7 @@ future: true
 highlight:
   enable: true
   line_number: true
-  auto_detect: false
+  auto_detect: true
   tab_replace: ''
   wrap: true
   hljs: false
@@ -106,3 +106,7 @@ deploy:
   type: git
   repo: https://github.com/SevenNorth/AshesBlog
   branch: gh-pages
+
+post_end_tag:
+  enabled: true  # 是否开启文末的本文结束标记
+  icon: heartbeat # 结束标记之间的图标

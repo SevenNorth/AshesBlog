@@ -333,6 +333,15 @@
     {#####################}
     {### END POST BODY ###}
     {#####################}
+    <div>
+    {% if not is_index %}
+      <div style="text-align:center;color:#bfbfbf;font-size:16px;">
+        <span>-------- 本文结束 </span>
+        <i class="fa fa-{{ config.post_end_tag.icon }}"></i>
+        <span> 感谢阅读 --------</span>
+      </div>
+    {% endif %}
+    </div>
 
     {% if theme.wechat_subscriber.enabled and not is_index %}
       <div>
@@ -356,7 +365,7 @@
       {% if post.tags and post.tags.length and not is_index %}
         <div class="post-tags">
           {% for tag in post.tags %}
-            <a href="{{ url_for(tag.path) }}" rel="tag"># {{ tag.name }}</a>
+            <a href="{{ url_for(tag.path) }}" rel="tag"><i class="fa fa-tags"></i> {{ tag.name }}</a>
           {% endfor %}
         </div>
       {% endif %}
