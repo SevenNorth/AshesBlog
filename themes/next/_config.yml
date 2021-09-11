@@ -198,7 +198,7 @@ sidebar:
   b2t: true
 
   # Scroll percent label in b2t button.
-  scrollpercent: true
+  scrollpercent: false
 
   # Enable sidebar on narrow view (only for Muse | Mist).
   onmobile: false
@@ -826,3 +826,6 @@ wobble:
   header: true  # 开启头部边缘摆动
   footer: true  # 开启脚部边缘摆动
   offset: 50
+
+# mouse click effect: fireworks | explosion | love | text
+cursor_effect: fireworks
