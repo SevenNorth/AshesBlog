@@ -28,7 +28,7 @@
 <meta property="og:description" content="webpack是什么？ &amp;emsp;&amp;emsp;webpack 是一个用于现代JavaScript应用程序的静态打包工具。当webpack处理应用程序的时，会在内部从一个或多个入口点构建一个依赖图，然后将项目中所需要的每一个模块组合成一个或者多个bundles，他们均作为静态资源，用于展示内容。">
 <meta property="og:locale" content="zh_CN">
 <meta property="article:published_time" content="2021-09-08T20:33:18.000Z">
-<meta property="article:modified_time" content="2021-09-28T02:47:26.748Z">
+<meta property="article:modified_time" content="2021-10-08T14:14:00.332Z">
 <meta property="article:author" content="SevenNorth">
 <meta property="article:tag" content="webpack">
 <meta name="twitter:card" content="summary">
@@ -196,7 +196,7 @@
                   <i class="far fa-calendar-check"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2021-09-28 02:47:26" itemprop="dateModified" datetime="2021-09-28T02:47:26+00:00">2021-09-28</time>
+                <time title="修改时间：2021-10-08 14:14:00" itemprop="dateModified" datetime="2021-10-08T14:14:00+00:00">2021-10-08</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -228,9 +228,21 @@
 
 <h1 id="核心概念"><a href="#核心概念" class="headerlink" title="核心概念"></a>核心概念</h1><h2 id="1-入口起点-entry-point"><a href="#1-入口起点-entry-point" class="headerlink" title="1. 入口起点(entry point)"></a>1. 入口起点(entry point)</h2><p>&emsp;&emsp;入口起点(entry point)指示webpack应该使用哪个模块，来作为构建其内部依赖图(dependency graph)的开始。进入入口起点后，webpack 会找出有哪些模块和库是入口起点（直接和间接）依赖的。</p>
 <h2 id="2-输出-output"><a href="#2-输出-output" class="headerlink" title="2. 输出(output)"></a>2. 输出(output)</h2><p>&emsp;&emsp;output 属性告诉 webpack 在哪里输出它所创建的 bundle，以及如何命名这些文件。主要输出文件的默认值是 ./dist/main.js，其他生成文件默认放置在 ./dist 文件夹中。</p>
-<h2 id="3-loader"><a href="#3-loader" class="headerlink" title="3. loader"></a>3. loader</h2><p>&emsp;&emsp;webpack 只能理解 JavaScript 和 JSON 文件，这是 webpack 开箱可用的自带能力。loader 让 webpack 能够去处理其他类型的文件，并将它们转换为有效 模块，以供应用程序使用，以及被添加到依赖图中。</p>
+<h2 id="3-loader"><a href="#3-loader" class="headerlink" title="3. loader"></a>3. loader</h2><p>&emsp;&emsp;webpack 只能理解 JavaScript 和 JSON 文件，这是 webpack 开箱可用的自带能力。loader 让 webpack 能够去处理其他类型的文件，并将它们转换为有效模块，以供应用程序使用，以及被添加到依赖图中。</p>
 <h2 id="4-插件-plugin"><a href="#4-插件-plugin" class="headerlink" title="4. 插件(plugin)"></a>4. 插件(plugin)</h2><p>&emsp;&emsp;loader 用于转换某些类型的模块，而插件则可以用于执行范围更广的任务。包括：打包优化，资源管理，注入环境变量。</p>
 <h2 id="5-模式-mode"><a href="#5-模式-mode" class="headerlink" title="5. 模式(mode)"></a>5. 模式(mode)</h2><p>&emsp;&emsp;通过选择 development, production 或 none 之中的一个，来设置 mode 参数，可以启用 webpack 内置在相应环境下的优化。其默认值为 production。</p>
+<hr>
+<h1 id="初步使用"><a href="#初步使用" class="headerlink" title="初步使用"></a>初步使用</h1><h2 id="打包样式资源"><a href="#打包样式资源" class="headerlink" title="打包样式资源"></a>打包样式资源</h2><p>&emsp;&emsp; 使用的loader： <code>style-loader</code>、<code>css-loader</code>、<code>less-loader</code>、<code>sass-loader</code> 等。</p>
+<ul>
+<li><code>sass-loader</code>： 将sass(scss)文件编译成css文件,需要配合<code>node-sass</code>模块使用。</li>
+<li><code>less-loader</code>： 将less文件编译成css文件，需要配合<code>less</code>模块使用。</li>
+<li><code>css-loader</code>： 将css文件变成commonjs模块加载到 js 中，其内容是样式字符串。</li>
+<li><code>style-loader</code>： 创建style标签，将js中的样式资源插入其中，并添加到head标签中，使其生效。<br>简单配置： <figure class="highlight javascript"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">    <span class="attr">test</span>: <span class="regexp">/\.css$/</span>,</span><br><span class="line">    use: [</span><br><span class="line">        <span class="string">&#x27;style-loader&#x27;</span>,</span><br><span class="line">        <span class="string">&#x27;css-loader&#x27;</span></span><br><span class="line">    ]</span><br><span class="line">&#125;,</span><br><span class="line">&#123;</span><br><span class="line">    <span class="attr">test</span>: <span class="regexp">/\.less$/</span>,</span><br><span class="line">    use: [</span><br><span class="line">        <span class="string">&#x27;style-loader&#x27;</span>,</span><br><span class="line">        <span class="string">&#x27;css-loader&#x27;</span>,</span><br><span class="line">        <span class="string">&#x27;less-loader&#x27;</span></span><br><span class="line">    ]</span><br><span class="line">&#125;,</span><br><span class="line">&#123;</span><br><span class="line">    <span class="attr">test</span>: <span class="regexp">/\.s(a|c)ss/</span>,</span><br><span class="line">    use: [</span><br><span class="line">        <span class="string">&#x27;style-loader&#x27;</span>,</span><br><span class="line">        <span class="string">&#x27;css-loader&#x27;</span>,</span><br><span class="line">        <span class="string">&#x27;sass-loader&#x27;</span>,</span><br><span class="line">    ]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+注意： use数组中loader的执行顺序，<font color='#f00'>从右到左</font>，<font color='#f00'>从下到上</font> 依次执行。</li>
+</ul>
+<h2 id="打包html资源"><a href="#打包html资源" class="headerlink" title="打包html资源"></a>打包html资源</h2><p>&emsp;&emsp; 使用插件：<code>html-webpack-plugin</code>。<code>html-webpack-plugin</code> 默认会创建一个空白的html，自动引入打包输出的所有资源（js/css）；也可以指定一个html模板，插件会复制该文件，在其文件中自动引入打包输出的所有资源（js/css）。<br>简单配置：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">const</span> HtmlWebpackPlugin = <span class="built_in">require</span>(<span class="string">&#x27;html-webpack-plugin&#x27;</span>);</span><br><span class="line"><span class="comment">// ...</span></span><br><span class="line">plugins: [</span><br><span class="line">    <span class="keyword">new</span> HtmlWebpackPlugin(&#123;</span><br><span class="line">        <span class="attr">template</span>: <span class="string">&#x27;./src/index.html&#x27;</span></span><br><span class="line">    &#125;)</span><br><span class="line">],</span><br><span class="line"><span class="comment">// ...</span></span><br></pre></td></tr></table></figure>
+<p>注意：插件需要先引入再使用。loader下载即可使用。</p>
 
     </div>
 
@@ -318,7 +330,7 @@
 
       <!--noindex-->
       <div class="post-toc-wrap sidebar-panel">
-          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#webpack%E6%98%AF%E4%BB%80%E4%B9%88%EF%BC%9F"><span class="nav-text">webpack是什么？</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E6%A0%B8%E5%BF%83%E6%A6%82%E5%BF%B5"><span class="nav-text">核心概念</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-%E5%85%A5%E5%8F%A3%E8%B5%B7%E7%82%B9-entry-point"><span class="nav-text">1. 入口起点(entry point)</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-%E8%BE%93%E5%87%BA-output"><span class="nav-text">2. 输出(output)</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-loader"><span class="nav-text">3. loader</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-%E6%8F%92%E4%BB%B6-plugin"><span class="nav-text">4. 插件(plugin)</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#5-%E6%A8%A1%E5%BC%8F-mode"><span class="nav-text">5. 模式(mode)</span></a></li></ol></li></ol></div>
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#webpack%E6%98%AF%E4%BB%80%E4%B9%88%EF%BC%9F"><span class="nav-text">webpack是什么？</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E6%A0%B8%E5%BF%83%E6%A6%82%E5%BF%B5"><span class="nav-text">核心概念</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-%E5%85%A5%E5%8F%A3%E8%B5%B7%E7%82%B9-entry-point"><span class="nav-text">1. 入口起点(entry point)</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-%E8%BE%93%E5%87%BA-output"><span class="nav-text">2. 输出(output)</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-loader"><span class="nav-text">3. loader</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-%E6%8F%92%E4%BB%B6-plugin"><span class="nav-text">4. 插件(plugin)</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#5-%E6%A8%A1%E5%BC%8F-mode"><span class="nav-text">5. 模式(mode)</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%88%9D%E6%AD%A5%E4%BD%BF%E7%94%A8"><span class="nav-text">初步使用</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%89%93%E5%8C%85%E6%A0%B7%E5%BC%8F%E8%B5%84%E6%BA%90"><span class="nav-text">打包样式资源</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%89%93%E5%8C%85html%E8%B5%84%E6%BA%90"><span class="nav-text">打包html资源</span></a></li></ol></li></ol></div>
       </div>
       <!--/noindex-->
 
@@ -441,7 +453,7 @@
 
   
 
-    <script async src="/AshesBlog/js/src/cursor/fireworks.js"></script>
+    <script async src="/AshesBlog/js/cursor/fireworks.js"></script>
 
 </body>
 </html>
