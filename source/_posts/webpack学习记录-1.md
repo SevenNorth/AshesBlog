@@ -4,7 +4,7 @@ categories:
   - [FE, webpack]
 date: 2021-09-08 20:33:18
 tags: 'webpack'
-copyright: false
+copyright: true
 ---
 
 # webpack是什么？
@@ -20,10 +20,63 @@ copyright: false
 &emsp;&emsp;output 属性告诉 webpack 在哪里输出它所创建的 bundle，以及如何命名这些文件。主要输出文件的默认值是 ./dist/main.js，其他生成文件默认放置在 ./dist 文件夹中。
 
 ## 3. loader
-&emsp;&emsp;webpack 只能理解 JavaScript 和 JSON 文件，这是 webpack 开箱可用的自带能力。loader 让 webpack 能够去处理其他类型的文件，并将它们转换为有效 模块，以供应用程序使用，以及被添加到依赖图中。
+&emsp;&emsp;webpack 只能理解 JavaScript 和 JSON 文件，这是 webpack 开箱可用的自带能力。loader 让 webpack 能够去处理其他类型的文件，并将它们转换为有效模块，以供应用程序使用，以及被添加到依赖图中。
 
 ## 4. 插件(plugin)
 &emsp;&emsp;loader 用于转换某些类型的模块，而插件则可以用于执行范围更广的任务。包括：打包优化，资源管理，注入环境变量。
 
 ## 5. 模式(mode)
 &emsp;&emsp;通过选择 development, production 或 none 之中的一个，来设置 mode 参数，可以启用 webpack 内置在相应环境下的优化。其默认值为 production。
+
+------
+
+# 初步使用
+
+## 打包样式资源
+&emsp;&emsp; 使用的loader： `style-loader`、`css-loader`、`less-loader`、`sass-loader` 等。
+- `sass-loader`： 将sass(scss)文件编译成css文件,需要配合`node-sass`模块使用。
+- `less-loader`： 将less文件编译成css文件，需要配合`less`模块使用。
+- `css-loader`： 将css文件变成commonjs模块加载到 js 中，其内容是样式字符串。
+- `style-loader`： 创建style标签，将js中的样式资源插入其中，并添加到head标签中，使其生效。
+简单配置： 
+```javascript
+{
+    test: /\.css$/,
+    use: [
+        'style-loader',
+        'css-loader'
+    ]
+},
+{
+    test: /\.less$/,
+    use: [
+        'style-loader',
+        'css-loader',
+        'less-loader'
+    ]
+},
+{
+    test: /\.s(a|c)ss/,
+    use: [
+        'style-loader',
+        'css-loader',
+        'sass-loader',
+    ]
+}
+```
+注意： use数组中loader的执行顺序，<font color='#f00'>从右到左</font>，<font color='#f00'>从下到上</font> 依次执行。
+
+## 打包html资源
+&emsp;&emsp; 使用插件：`html-webpack-plugin`。`html-webpack-plugin` 默认会创建一个空白的html，自动引入打包输出的所有资源（js/css）；也可以指定一个html模板，插件会复制该文件，在其文件中自动引入打包输出的所有资源（js/css）。
+简单配置：
+```js
+const HtmlWebpackPlugin = require('html-webpack-plugin');
+// ...
+plugins: [
+    new HtmlWebpackPlugin({
+        template: './src/index.html'
+    })
+],
+// ...
+```
+注意：插件需要先引入再使用。loader下载即可使用。

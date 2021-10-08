@@ -996,4 +996,5 @@ css: css
 js: js
 images: images
 
+# mouse click effect: fireworks | explosion | love | text
 cursor_effect: fireworks
