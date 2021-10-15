@@ -1,6 +1,4 @@
-{%- set ccIcon = '<i class="fab fa-fw fa-creative-commons"></i>' %}
-{%- set ccText = theme.creative_commons.license | upper %}
-
+<!-- JS库 clipboard 拷贝内容到粘贴板-->
 <script src="https://cdn.bootcss.com/clipboard.js/2.0.1/clipboard.min.js"></script>
 
 <!-- JS库 sweetalert 显示提示信息-->
@@ -16,7 +14,7 @@
   <!-- 本文作者 -->
   <li class="post-copyright-author">
     <strong>{{ __('post.copyright.author') + __('symbol.colon') }} </strong>
-    {{ post.author | default(config.author) }}
+    {{ post.author | default(author) }}
   </li>
 
   <!-- 创建时间 -->
@@ -34,14 +32,14 @@
   <!-- 引用链接 -->
   <li class="post-copyright-link">
     <strong>{{ __('post.copyright.link') + __('symbol.colon') }}</strong>
-    <a href="{{ post.url | default(decodeURI(post.permalink)) }}" title="{{ post.title }}"
-      >{{ post.url | default(decodeURI(post.permalink)) }}</a
+    <a href="{{ post.url | default(post.permalink) }}" title="{{ post.title }}"
+      >{{ post.url | default(post.permalink) }}</a
     >
     <span class="copy-path" title="点击复制引用链接"
       ><i
         style="cursor: pointer"
         class="fa fa-clipboard"
-        data-clipboard-text="[{{ post.author | default(config.author) }}'s Blog | {{ post.title }}]({{ decodeURI(post.permalink) }})"
+        data-clipboard-text="[{{ post.author | default(author) }}'s Blog | {{ post.title }}]({{ post.permalink }})"
         aria-label="{{ __('post.copy_success') }}"
       ></i
     ></span>
