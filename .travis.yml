@@ -9,7 +9,7 @@ branches:
 script:
   - hexo generate # generate static files
   - ls public
-  - cp -p CNAME public
+  - cp -a CNAME public
   - ls pubic
 deploy:
   provider: pages
