@@ -1175,7 +1175,7 @@ pre .javascript .function {
 }
 .links-of-author a::before,
 .links-of-author span.exturl::before {
-  background: #ffedff;
+  background: #5efffc;
   border-radius: 50%;
   content: ' ';
   display: inline-block;
@@ -1496,7 +1496,7 @@ pre .javascript .function {
   top: -900px;
   bottom: unset;
   transition: all 0.5s ease-in-out;
-  background-image: url("/AshesBlog/images/scroll.png");
+  background-image: url("/images/scroll.png");
   position: fixed;
   cursor: pointer;
 }
