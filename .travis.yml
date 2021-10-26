@@ -10,7 +10,7 @@ script:
   - hexo generate # generate static files
   - ls public
   - cp -a CNAME public
-  - ls pubic
+  - ls public
 deploy:
   provider: pages
   skip-cleanup: true
