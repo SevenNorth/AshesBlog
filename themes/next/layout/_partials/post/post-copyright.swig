@@ -40,7 +40,7 @@
         style="cursor: pointer"
         class="fa fa-clipboard"
         data-clipboard-text="[{{ post.author | default(author) }}'s Blog | {{ post.title }}]({{ post.permalink }})"
-        aria-label="{{ __('post.copy_success') }}"
+        aria-label="{{ __('链接复制成功') }}"
       ></i
     ></span>
   </li>
