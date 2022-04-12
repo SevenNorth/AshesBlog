@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 5.4.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"blog.lovinghlx.cn","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="前言上节介绍了通用的 UI 线程架构，每个 UI 线程都拥有一个消息队列，所有的待执行的事件都会被添加进消息队列中，UI 线程会按照一定规则，循环地取出消息队列中的事件，并执行事件。而 JavaScript 最初也是运行在 UI 线程中的。换句话说，JavaScript 语言就是基于这套通用的 UI 线程架构而设计的。 基于这套基础UI线程框架， JavaScript又延伸出很多新的技术，其中应用">
+<meta property="og:type" content="article">
+<meta property="og:title" content="V8是如何实现微任务的？">
+<meta property="og:url" content="http://blog.lovinghlx.cn/V8/V8%E6%98%AF%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0%E5%BE%AE%E4%BB%BB%E5%8A%A1%E7%9A%84%EF%BC%9F/">
+<meta property="og:site_name" content="AshesBlog">
+<meta property="og:description" content="前言上节介绍了通用的 UI 线程架构，每个 UI 线程都拥有一个消息队列，所有的待执行的事件都会被添加进消息队列中，UI 线程会按照一定规则，循环地取出消息队列中的事件，并执行事件。而 JavaScript 最初也是运行在 UI 线程中的。换句话说，JavaScript 语言就是基于这套通用的 UI 线程架构而设计的。 基于这套基础UI线程框架， JavaScript又延伸出很多新的技术，其中应用">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413063232.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413064144.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413064242.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413064327.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413064441.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413064519.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413064647.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413065113.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413065316.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413065441.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413065540.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413065721.png">
+<meta property="article:published_time" content="2022-04-13T06:07:45.000Z">
+<meta property="article:modified_time" content="2022-04-12T23:16:01.092Z">
+<meta property="article:author" content="SevenNorth">
+<meta property="article:tag" content="V8">
+<meta property="article:tag" content="浏览器">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413063232.png">
+
+<link rel="canonical" href="http://blog.lovinghlx.cn/V8/V8%E6%98%AF%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0%E5%BE%AE%E4%BB%BB%E5%8A%A1%E7%9A%84%EF%BC%9F/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>V8是如何实现微任务的？ | AshesBlog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">AshesBlog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">六畳一间的堂吉诃德</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://blog.lovinghlx.cn/V8/V8%E6%98%AF%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0%E5%BE%AE%E4%BB%BB%E5%8A%A1%E7%9A%84%EF%BC%9F/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/llyq.jpg">
+      <meta itemprop="name" content="SevenNorth">
+      <meta itemprop="description" content="野渡无人舟自横">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="AshesBlog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          V8是如何实现微任务的？
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-04-13 06:07:45" itemprop="dateCreated datePublished" datetime="2022-04-13T06:07:45+00:00">2022-04-13</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-04-12 23:16:01" itemprop="dateModified" datetime="2022-04-12T23:16:01+00:00">2022-04-12</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/V8/" itemprop="url" rel="index"><span itemprop="name">V8</span></a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h2><p>上节介绍了通用的 UI 线程架构，每个 UI 线程都拥有一个消息队列，所有的待执行的事件都会被添加进消息队列中，UI 线程会按照一定规则，循环地取出消息队列中的事件，并执行事件。而 JavaScript 最初也是运行在 UI 线程中的。换句话说，JavaScript 语言就是基于这套通用的 UI 线程架构而设计的。</p>
+<p>基于这套基础UI线程框架， JavaScript又延伸出很多新的技术，其中应用最广泛的当属于<b>宏任务</b>和<b>微任务</b>。</p>
+<span id="more"></span>
+
+<p><b>宏任务</b>很简单，<b>就是指消息队列中的等待被主线程执行的事件</b>。每个宏任务在执行时，V8 都会重新创建栈，然后随着宏任务中函数调用，栈也随之变化，最终，当该宏任务执行结束时，整个栈又会被清空，接着主线程继续执行下一个宏任务。</p>
+<p>JavaScript 中之所以要引入微任务，主要是由于主线程执行消息队列中宏任务的时间颗粒度太粗了，无法胜任一些对精度和实时性要求较高的场景，那么<b>微任务可以在实时性和效率之间做一个有效的权衡</b>。另外使用微任务，可以改变我们现在的异步编程模型，使得我们可以使用同步形式的代码来编写异步调用。</p>
+<p>微任务相关的知识栈，具体内容如下图所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413063232.png" alt="微任务相关的知识栈"></p>
+<p>从图中可以看出，微任务是基于消息队列、事件循环、UI 主线程还有堆栈而来的，然后基于微任务，又可以延伸出协程、Promise、Generator、await/async 等现代前端经常使用的一些技术。也就是说，如果对消息队列、主线程还有调用栈理解的不够深入，在研究微任务时，就容易一头雾水。</p>
+<h2 id="主线程、调用栈、消息队列"><a href="#主线程、调用栈、消息队列" class="headerlink" title="主线程、调用栈、消息队列"></a>主线程、调用栈、消息队列</h2><p>先从<b>主线程</b>和调用栈开始分析。<b>调用栈是一种数据结构，用来管理在主线程上执行的函数的调用关系</b>。接下来我们通过执行下面这段代码，来分析下调用栈是如何管理主线程上函数调用的。</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">bar</span>(<span class="params"></span>) </span>&#123;</span><br><span class="line">&#125;</span><br><span class="line"><span class="function"><span class="title">foo</span>(<span class="params">fun</span>)</span>&#123;</span><br><span class="line">  fun()</span><br><span class="line">&#125;</span><br><span class="line">foo(bar)</span><br></pre></td></tr></table></figure>
+
+<p>当v8准备执行这段代码时，会先将全局执行上下文压入调用栈中，如下图所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413064144.png" alt="准备执行"></p>
+<p>然后 V8 便开始在主线程上执行 foo 函数，首先它会创建 foo 函数的执行上下文，并将其压入栈中，那么此时调用栈、主线程的关系如下图所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413064242.png" alt="调用foo函数"></p>
+<p>然后，foo 函数又调用了 bar 函数，那么当 V8 执行 bar 函数时，同样要创建 bar 函数的执行上下文，并将其压入栈中，最终效果如下图所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413064327.png" alt="调用bar函数"></p>
+<p>等 bar 函数执行结束，V8 就会从栈中弹出 bar 函数的执行上下文，此时的效果如下所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413064441.png" alt="bar函数执行结束"></p>
+<p>最后，foo 函数执行结束，V8 会将 foo 函数的执行上下文从栈中弹出，效果如下所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413064519.png" alt="foo函数执行结束"></p>
+<p>以上就是调用栈管理主线程上函数调用的方式，不过，这种方式会带来一种问题，那就是栈溢出。比如下面这段代码：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">foo</span>(<span class="params"></span>)</span>&#123;</span><br><span class="line">  foo()</span><br><span class="line">&#125;</span><br><span class="line">foo()</span><br></pre></td></tr></table></figure>
+
+<p>由于 foo 函数内部嵌套调用它自己，所以在调用 foo 函数的时候，它的栈会一直向上增长，但是由于栈空间在内存中是连续的，所以通常我们都会限制调用栈的大小，如果当函数嵌套层数过深时，过多的执行上下文堆积在栈中便会导致栈溢出，最终如下图所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413064647.png" alt="栈溢出"></p>
+<p>我们可以使用 setTimeout 来解决栈溢出的问题，setTimeout 的本质是将同步函数调用改成异步函数调用，这里的异步调用是将 foo 封装成事件，并将其添加进消息队列中，然后主线程再按照一定规则循环地从消息队列中读取下一个任务。使用 setTimeout 改造后代码代码如下所示：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">foo</span>(<span class="params"></span>) </span>&#123;</span><br><span class="line">  <span class="built_in">setTimeout</span>(foo, <span class="number">0</span>)</span><br><span class="line">&#125;</span><br><span class="line">foo()</span><br></pre></td></tr></table></figure>
+
+<p>那么现在我们就可以从<b>调用栈、主线程、消息队列</b>这三者的角度来分析这段代码的执行流程了。</p>
+<p>首先，主线程会从消息队列中取出需要执行的宏任务，假设当前取出的任务就是要执行的这段代码，这时候主线程便会进入代码的执行状态。这时关于主线程、消息队列、调用栈的关系如下图所示</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413065113.png" alt="调用栈、主线程、消息队列"></p>
+<p>接下来 V8 就要执行 foo 函数了，同样执行 foo 函数时，会创建 foo 函数的执行上下文，并将其压入栈中，最终效果如下图所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413065316.png" alt="调用foo函数"></p>
+<p>当 V8 执行执行 foo 函数中的 setTimeout 时，setTimeout 会将 foo 函数封装成一个新的宏任务，并将其添加到消息队列中，在 V8 执行 setTimeout 函数时的状态图如下所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413065441.png" alt="执行setTimeout函数"></p>
+<p>等 foo 函数执行结束，V8 就会结束当前的宏任务，调用栈也会被清空，调用栈被清空后状态如下图所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413065540.png" alt="foo函数执行结束"></p>
+<p>当一个宏任务执行结束之后，忙碌的主线程依然不会闲下来，它会一直重复这个取宏任务、执行宏任务的过程。刚才通过 setTimeout 封装的回调宏任务，也会在某一时刻被主线取出并执行，这个执行过程，就是 foo 函数的调用过程。具体示意图如下所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413065721.png" alt="再次取出宏任务foo并执行"></p>
+<p>因为 foo 函数并不是在当前的父函数内部被执行的，而是封装成了宏任务，并丢进了消息队列中，然后等待主线程从消息队列中取出该任务，再执行该回调函数 foo，这样就解决了栈溢出的问题。</p>
+<h2 id="微任务解决了宏任务执行时机不可控的问题"><a href="#微任务解决了宏任务执行时机不可控的问题" class="headerlink" title="微任务解决了宏任务执行时机不可控的问题"></a>微任务解决了宏任务执行时机不可控的问题</h2><p>对于栈溢出问题，虽然我们可以通过将某些函数封装成宏任务的方式来解决，但是宏任务需要先被放到消息队列中，如果某些宏任务的执行时间过久，那么就会影响到消息队列后面的宏任务的执行，而且这个影响是不可控的，因为无法知道前面的宏任务需要多久才能执行完成。</p>
+<p>于是 JavaScript 中又引入了微任务，微任务会在当前的任务快要执行结束时执行，利用微任务，你就能比较精准地控制你的回调函数的执行时机。</p>
+<p>通俗地理解，V8 会为每个宏任务维护一个微任务队列。当 V8 执行一段 JavaScript 时，会为这段代码创建一个环境对象，微任务队列就是存放在该环境对象中的。当你通过 Promise.resolve 生成一个微任务，该微任务会被 V8 自动添加进微任务队列，等整段代码快要执行结束时，该环境对象也随之被销毁，但是在销毁之前，V8 会先处理微任务队列中的微任务。</p>
+<p>理解微任务的执行时机，只需要记住以下两点：</p>
+<ul>
+<li>首先，如果当前的任务中产生了一个微任务，通过 Promise.resolve() 或者 Promise.reject() 都会触发微任务，触发的微任务不会在当前的函数中被执行，所以执行微任务时，不会导致栈的无限扩张；</li>
+<li>其次，和异步调用不同，微任务依然会在当前任务执行结束之前被执行，这也就意味着在当前微任务执行结束之前，消息队列中的其他任务是不可能被执行的。</li>
+</ul>
+<p>因此在函数内部触发的微任务，一定比在函数内部触发的宏任务要优先执行。为了验证这个观点，我们来分析一段代码：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">bar</span>(<span class="params"></span>)</span>&#123;</span><br><span class="line">  <span class="built_in">console</span>.log(<span class="string">&#x27;bar&#x27;</span>)</span><br><span class="line">  <span class="built_in">Promise</span>.resolve().then(</span><br><span class="line">    <span class="function">(<span class="params">str</span>) =&gt;</span><span class="built_in">console</span>.log(<span class="string">&#x27;micro-bar&#x27;</span>)</span><br><span class="line">  ) </span><br><span class="line">  <span class="built_in">setTimeout</span>(<span class="function">(<span class="params">str</span>) =&gt;</span><span class="built_in">console</span>.log(<span class="string">&#x27;macro-bar&#x27;</span>),<span class="number">0</span>)</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">foo</span>(<span class="params"></span>) </span>&#123;</span><br><span class="line">  <span class="built_in">console</span>.log(<span class="string">&#x27;foo&#x27;</span>)</span><br><span class="line">  <span class="built_in">Promise</span>.resolve().then(</span><br><span class="line">    <span class="function">(<span class="params">str</span>) =&gt;</span><span class="built_in">console</span>.log(<span class="string">&#x27;micro-foo&#x27;</span>)</span><br><span class="line">  ) </span><br><span class="line">  <span class="built_in">setTimeout</span>(<span class="function">(<span class="params">str</span>) =&gt;</span><span class="built_in">console</span>.log(<span class="string">&#x27;macro-foo&#x27;</span>),<span class="number">0</span>)</span><br><span class="line">  </span><br><span class="line">  bar()</span><br><span class="line">&#125;</span><br><span class="line">foo()</span><br><span class="line"></span><br><span class="line"><span class="built_in">console</span>.log(<span class="string">&#x27;global&#x27;</span>)</span><br><span class="line"><span class="built_in">Promise</span>.resolve().then(</span><br><span class="line">  <span class="function">(<span class="params">str</span>) =&gt;</span><span class="built_in">console</span>.log(<span class="string">&#x27;micro-global&#x27;</span>)</span><br><span class="line">) </span><br><span class="line"><span class="built_in">setTimeout</span>(<span class="function">(<span class="params">str</span>) =&gt;</span><span class="built_in">console</span>.log(<span class="string">&#x27;macro-global&#x27;</span>),<span class="number">0</span>)</span><br></pre></td></tr></table></figure>
+
+<p>在这段代码中，包含了通过 setTimeout 宏任务和通过 Promise.resolve 创建的微任务。</p>
+<p>最终打印出来的顺序是：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">foo</span><br><span class="line">bar</span><br><span class="line">global</span><br><span class="line">micro-foo</span><br><span class="line">micro-bar</span><br><span class="line">micro-global</span><br><span class="line">macro-foo</span><br><span class="line">macro-bar</span><br><span class="line">macro-global</span><br></pre></td></tr></table></figure>
+
+<hr>
+<p>未完待续</p>
+
+    </div>
+
+    
+    
+    
+    
+    <div>
+      <div>
+    
+    <div style="text-align:center;color:#bfbfbf;font-size:16px;">
+        <span>-------- 本文结束 </span>
+        <i class="fa fa-heartbeat"></i>
+        <span> 感谢阅读 --------</span>
+    </div>
+    
+</div>
+    </div>
+    
+        <!-- JS库 clipboard 拷贝内容到粘贴板-->
+<script src="https://cdn.bootcss.com/clipboard.js/2.0.1/clipboard.min.js"></script>
+
+<!-- JS库 sweetalert 显示提示信息-->
+<script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
+
+<ul class="post-copyright">
+  <!-- 本文标题 -->
+  <li>
+    <strong>本文标题： </strong>
+    V8是如何实现微任务的？
+  </li>
+
+  <!-- 本文作者 -->
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>
+    SevenNorth
+  </li>
+
+  <!-- 创建时间 -->
+  <li>
+    <strong>创建时间： </strong>
+    2022年04月13日 - 06时04分
+  </li>
+
+  <!-- 修改时间 -->
+  <li>
+    <strong>修改时间： </strong>
+    2022年04月12日 - 23时04分
+  </li>
+
+  <!-- 引用链接 -->
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="http://blog.lovinghlx.cn/V8/V8%E6%98%AF%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0%E5%BE%AE%E4%BB%BB%E5%8A%A1%E7%9A%84%EF%BC%9F/" title="V8是如何实现微任务的？"
+      >http://blog.lovinghlx.cn/V8/V8%E6%98%AF%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0%E5%BE%AE%E4%BB%BB%E5%8A%A1%E7%9A%84%EF%BC%9F/</a
+    >
+    <span class="copy-path" title="点击复制引用链接"
+      ><i
+        style="cursor: pointer"
+        class="fa fa-clipboard"
+        data-clipboard-text="[SevenNorth's Blog | V8是如何实现微任务的？](http://blog.lovinghlx.cn/V8/V8%E6%98%AF%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0%E5%BE%AE%E4%BB%BB%E5%8A%A1%E7%9A%84%EF%BC%9F/)"
+        aria-label="链接复制成功"
+      ></i
+    ></span>
+  </li>
+
+  <!-- 版权声明 -->
+  <li class="post-copyright-license">
+    <strong
+      >版权声明：
+    </strong>
+    本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="external nofollow" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+
+<script>
+  var clipboard = new ClipboardJS(".fa-clipboard");
+  clipboard.on("success", function(target) {
+    var message = document.createElement("div");
+    message.innerHTML =
+      '<i class="fa fa-check-circle message-icon"></i><span class="message-content">' +
+      target.trigger.getAttribute("aria-label") +
+      "</span>";
+    swal({
+      content: message,
+      className: "copy-success-message",
+      timer: 1000,
+      button: false
+    });
+  });
+</script>
+
+      <footer class="post-footer">
+          
+          <div class="post-tags">
+              <a href="/tags/V8/" rel="tag"><i class="fa fa-tag"></i> V8</a>
+              <a href="/tags/%E6%B5%8F%E8%A7%88%E5%99%A8/" rel="tag"><i class="fa fa-tag"></i> 浏览器</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/V8/%E6%B6%88%E6%81%AF%E9%98%9F%E5%88%97%EF%BC%9AV8%E6%98%AF%E6%80%8E%E4%B9%88%E5%AE%9E%E7%8E%B0%E5%9B%9E%E8%B0%83%E5%87%BD%E6%95%B0%E7%9A%84%EF%BC%9F/" rel="prev" title="消息队列：V8是怎么实现回调函数的？">
+      <i class="fa fa-chevron-left"></i> 消息队列：V8是怎么实现回调函数的？
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%89%8D%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">前言</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%BB%E7%BA%BF%E7%A8%8B%E3%80%81%E8%B0%83%E7%94%A8%E6%A0%88%E3%80%81%E6%B6%88%E6%81%AF%E9%98%9F%E5%88%97"><span class="nav-number">2.</span> <span class="nav-text">主线程、调用栈、消息队列</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%BE%AE%E4%BB%BB%E5%8A%A1%E8%A7%A3%E5%86%B3%E4%BA%86%E5%AE%8F%E4%BB%BB%E5%8A%A1%E6%89%A7%E8%A1%8C%E6%97%B6%E6%9C%BA%E4%B8%8D%E5%8F%AF%E6%8E%A7%E7%9A%84%E9%97%AE%E9%A2%98"><span class="nav-number">3.</span> <span class="nav-text">微任务解决了宏任务执行时机不可控的问题</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <a href="/">
+      <img class="site-author-image" itemprop="image" alt="SevenNorth"
+        src="/images/llyq.jpg">
+    </a>
+  <p class="site-author-name" itemprop="name">SevenNorth</p>
+  <div class="site-description" itemprop="description">野渡无人舟自横</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">4</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/SevenNorth" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;SevenNorth" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heartbeat"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">SevenNorth</span>
+</div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+  
+
+    <script async src="/js/cursor/fireworks.js"></script>
+
+</body>
+</html>
