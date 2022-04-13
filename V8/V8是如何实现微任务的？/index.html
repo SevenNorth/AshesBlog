@@ -39,8 +39,15 @@
 <meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413065441.png">
 <meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413065540.png">
 <meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220413065721.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220414071822.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220414072317.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220414072612.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220414073037.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220414073304.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220414074022.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220414074227.png">
 <meta property="article:published_time" content="2022-04-13T06:07:45.000Z">
-<meta property="article:modified_time" content="2022-04-12T23:16:01.092Z">
+<meta property="article:modified_time" content="2022-04-13T23:56:49.212Z">
 <meta property="article:author" content="SevenNorth">
 <meta property="article:tag" content="V8">
 <meta property="article:tag" content="浏览器">
@@ -202,16 +209,10 @@
                 <i class="far fa-calendar"></i>
               </span>
               <span class="post-meta-item-text">发表于</span>
+              
 
-              <time title="创建时间：2022-04-13 06:07:45" itemprop="dateCreated datePublished" datetime="2022-04-13T06:07:45+00:00">2022-04-13</time>
+              <time title="创建时间：2022-04-13 06:07:45 / 修改时间：23:56:49" itemprop="dateCreated datePublished" datetime="2022-04-13T06:07:45+00:00">2022-04-13</time>
             </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="far fa-calendar-check"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2022-04-12 23:16:01" itemprop="dateModified" datetime="2022-04-12T23:16:01+00:00">2022-04-12</time>
-              </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
                 <i class="far fa-folder"></i>
@@ -290,8 +291,64 @@
 <p>最终打印出来的顺序是：</p>
 <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">foo</span><br><span class="line">bar</span><br><span class="line">global</span><br><span class="line">micro-foo</span><br><span class="line">micro-bar</span><br><span class="line">micro-global</span><br><span class="line">macro-foo</span><br><span class="line">macro-bar</span><br><span class="line">macro-global</span><br></pre></td></tr></table></figure>
 
-<hr>
-<p>未完待续</p>
+<p>可以清晰地看出，微任务是处于宏任务之前执行的。接下来，就来详细分析下 V8 是怎么执行这段 JavaScript 代码的。</p>
+<p>首先，当 V8 执行这段代码时，会将全局执行上下文压入调用栈中，并在执行上下文中创建一个空的微任务队列。那么此时：</p>
+<ul>
+<li>调用栈包含了全局执行上下文</li>
+<li>微任务队列为空</li>
+</ul>
+<p>此时的消息队列、主线程、调用栈的状态图如下所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220414071822.png" alt="初始时消息队列、主线程、调用栈的状态图"></p>
+<p>然后，执行 foo 函数的调用，V8 会先创建 foo 函数的执行上下文，并将其压入到栈中。接着执行 Promise.resolve，这会触发一个 micro-foo 微任务，V8 会将该微任务添加进微任务队列。然后执行 setTimeout 方法。该方法会触发了一个 macro-foo 宏任务，V8 会将该宏任务添加进消息队列。那么此时：</p>
+<ul>
+<li>调用栈中包含了<b>全局执行上下文、foo 函数的执行上下文</b>；</li>
+<li>微任务队列有了一个微任务，<b>micro-foo</b>；</li>
+<li>消息队列中存放了一个通过 setTimeout 设置的宏任务，<b>macro-foo</b>。</li>
+</ul>
+<p>此时的消息队列、主线程、调用栈的状态图如下所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220414072317.png" alt="foo函数调用时消息队列、主线程、调用栈的状态图"></p>
+<p>接下来，foo 函数调用了 bar 函数，那么 V8 需要再创建 bar 函数的执行上下文，并将其压入栈中，接着执行 Promise.resolve，这会触发一个 micro-bar 微任务，该微任务会被添加进微任务队列。然后执行 setTimeout 方法，这也会触发一个 macro-bar 宏任务，宏任务同样也会被添加进消息队列。那么此时：</p>
+<ul>
+<li>调用栈中包含了<b>全局执行上下文、foo 函数的执行上下文、bar函数的执行上下文</b>；</li>
+<li>微任务队列有了一个微任务，<b>micro-foo、micro-bar</b>；</li>
+<li>消息队列中存放了一个通过 setTimeout 设置的宏任务，<b>macro-foo、macro-bar</b>。</li>
+</ul>
+<p>此时的消息队列、主线程、调用栈的状态图如下所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220414072612.png" alt="bar函数调用时消息队列、主线程、调用栈的状态图"></p>
+<p>接下来，bar 函数执行结束并退出，bar 函数的执行上下文也会从栈中弹出，紧接着 foo 函数执行结束并退出，foo 函数的执行上下文也随之从栈中被弹出。那么此时：</p>
+<ul>
+<li>调用栈中包含了<b>全局执行上下文</b>，因为 bar 函数和 foo 函数都执行结束了，所以它们的执行上下文都被弹出调用栈了；</li>
+<li>微任务队列中的微任务同样还是<b>micro-foo、micro-bar</b>；</li>
+<li>消息队列中宏任务的状态同样还是<b>micro-foo、micro-bar</b>；</li>
+</ul>
+<p>此时的消息队列、主线程、调用栈的状态图如下所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220414073037.png" alt="bar函数、foo函数调用结束后消息队列、主线程、调用栈的状态图"></p>
+<p>主线程执行完了 foo 函数，紧接着就要执行全局环境中的代码 Promise.resolve 了，这会触发一个 micro-global 微任务，V8 会将该微任务添加进微任务队列。接着又执行 setTimeout 方法，该方法会触发了一个 macro-global 宏任务，V8 会将该宏任务添加进消息队列。那么此时：</p>
+<ul>
+<li>调用栈中包含了<b>全局执行上下文</b>；</li>
+<li>微任务队列有了一个微任务，<b>micro-foo、micro-bar、micro-global</b>；</li>
+<li>消息队列中存放了一个通过 setTimeout 设置的宏任务，<b>macro-foo、macro-bar、macro-global</b>。</li>
+</ul>
+<p>此时的消息队列、主线程、调用栈的状态图如下所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220414073304.png" alt="主线程继续执行全局代码时消息队列、主线程、调用栈的状态图"></p>
+<p>等到这段代码即将执行完成时，V8 便要销毁这段代码的环境对象，此时环境对象的析构函数被调用（注意，这里的析构函数是 C++ 中的概念），这里就是 V8 执行微任务的一个检查点，这时候 V8 会检查微任务队列，如果微任务队列中存在微任务，那么 V8 会依次取出微任务，并按照顺行执行。因为微任务队列中的任务分别是：micro-foo、micro-bar、micro-global，所以执行的顺序也是如此。</p>
+<p>此时的消息队列、主线程和调用栈的状态图如下所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220414074022.png" alt="这段代码的环境对象销毁前"></p>
+<p>等微任务队列中的所有微任务都执行完成之后，当前的宏任务也就执行结束了，接下来主线程会继续重复执行取出任务、执行任务的过程。由于正常情况下，取出宏任务的顺序是按照先进先出的顺序，所有最后打印出来的顺序是：macro-foo、macro-bar、macro-global。</p>
+<p>等所有的任务执行完成之后，消息队列、主线程和调用栈的状态图如下所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220414074227.png" alt="所有任务执行完之后"></p>
+<p>以上就是完整的执行流程的分析，可以了解微任务和宏任务的执行时机是不同的了，微任务是在当前的任务快要执行结束之前执行的，宏任务是消息队列中的任务，主线程执行完一个宏任务之后，便会接着从消息队列中取出下一个宏任务并执行。</p>
+<h2 id="能否在微任务中循环地触发新的微任务？"><a href="#能否在微任务中循环地触发新的微任务？" class="headerlink" title="能否在微任务中循环地触发新的微任务？"></a>能否在微任务中循环地触发新的微任务？</h2><p>看这段代码：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">foo</span>(<span class="params"></span>) </span>&#123;</span><br><span class="line">  <span class="keyword">return</span> <span class="built_in">Promise</span>.resolve().then(foo)</span><br><span class="line">&#125;</span><br><span class="line">foo()</span><br></pre></td></tr></table></figure>
+<p>当执行 foo 函数时，由于 foo 函数中调用了 Promise.resolve()，这会触发一个微任务，那么此时，V8 会将该微任务添加进微任务队列中，退出当前 foo 函数的执行。</p>
+<p>然后，V8 在准备退出当前的宏任务之前，会检查微任务队列，发现微任务队列中有一个微任务，于是先执行微任务。由于这个微任务就是调用 foo 函数本身，所以在执行微任务的过程中，需要继续调用 foo 函数，在执行 foo 函数的过程中，又会触发了同样的微任务。</p>
+<p>那么这个循环就会一直持续下去，当前的宏任务无法退出，也就意味着消息队列中其他的宏任务是无法被执行的，比如通过鼠标、键盘所产生的事件。这些事件会一直保存在消息队列中，页面无法响应这些事件，具体的体现就是页面的卡死。</p>
+<p>不过，由于 V8 每次执行微任务时，都会退出当前 foo 函数的调用栈，所以这段代码是不会造成栈溢出的。</p>
+<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>调用栈是一种数据结构，用来管理在主线程上执行的函数的调用关系。主线在执行任务的过程中，如果函数的调用层次过深，可能造成栈溢出的错误，我们可以使用 setTimeout 来解决栈溢出的问题。</p>
+<p>setTimeout 的本质是将同步函数调用改成异步函数调用，这里的异步调用是将回调函数封装成宏任务，并将其添加进<b>消息队列</b>中，然后主线程再按照一定规则循环地从消息队列中读取下一个宏任务。</p>
+<p>消息队列中事件又被称为宏任务，不过，宏任务的时间颗粒度太粗了，无法胜任一些对精度和实时性要求较高的场景，而<b>微任务可以在实时性和效率之间做有效的权衡</b>。</p>
+<p>微任务之所以能实现这样的效果，主要取决于微任务的执行时机，<b>微任务其实是一个需要异步执行的函数，执行时机是在主函数执行结束之后、当前宏任务结束之前</b>。</p>
+<p>因为微任务依然是在当前的任务中执行的，所以如果在微任务中循环触发新的微任务，那么将导致消息队列中的其他任务没有机会被执行。</p>
 
     </div>
 
@@ -339,7 +396,7 @@
   <!-- 修改时间 -->
   <li>
     <strong>修改时间： </strong>
-    2022年04月12日 - 23时04分
+    2022年04月13日 - 23时04分
   </li>
 
   <!-- 引用链接 -->
@@ -459,7 +516,7 @@
 
       <!--noindex-->
       <div class="post-toc-wrap sidebar-panel">
-          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%89%8D%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">前言</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%BB%E7%BA%BF%E7%A8%8B%E3%80%81%E8%B0%83%E7%94%A8%E6%A0%88%E3%80%81%E6%B6%88%E6%81%AF%E9%98%9F%E5%88%97"><span class="nav-number">2.</span> <span class="nav-text">主线程、调用栈、消息队列</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%BE%AE%E4%BB%BB%E5%8A%A1%E8%A7%A3%E5%86%B3%E4%BA%86%E5%AE%8F%E4%BB%BB%E5%8A%A1%E6%89%A7%E8%A1%8C%E6%97%B6%E6%9C%BA%E4%B8%8D%E5%8F%AF%E6%8E%A7%E7%9A%84%E9%97%AE%E9%A2%98"><span class="nav-number">3.</span> <span class="nav-text">微任务解决了宏任务执行时机不可控的问题</span></a></li></ol></div>
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%89%8D%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">前言</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%BB%E7%BA%BF%E7%A8%8B%E3%80%81%E8%B0%83%E7%94%A8%E6%A0%88%E3%80%81%E6%B6%88%E6%81%AF%E9%98%9F%E5%88%97"><span class="nav-number">2.</span> <span class="nav-text">主线程、调用栈、消息队列</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%BE%AE%E4%BB%BB%E5%8A%A1%E8%A7%A3%E5%86%B3%E4%BA%86%E5%AE%8F%E4%BB%BB%E5%8A%A1%E6%89%A7%E8%A1%8C%E6%97%B6%E6%9C%BA%E4%B8%8D%E5%8F%AF%E6%8E%A7%E7%9A%84%E9%97%AE%E9%A2%98"><span class="nav-number">3.</span> <span class="nav-text">微任务解决了宏任务执行时机不可控的问题</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%83%BD%E5%90%A6%E5%9C%A8%E5%BE%AE%E4%BB%BB%E5%8A%A1%E4%B8%AD%E5%BE%AA%E7%8E%AF%E5%9C%B0%E8%A7%A6%E5%8F%91%E6%96%B0%E7%9A%84%E5%BE%AE%E4%BB%BB%E5%8A%A1%EF%BC%9F"><span class="nav-number">4.</span> <span class="nav-text">能否在微任务中循环地触发新的微任务？</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%80%BB%E7%BB%93"><span class="nav-number">5.</span> <span class="nav-text">总结</span></a></li></ol></div>
       </div>
       <!--/noindex-->
 
