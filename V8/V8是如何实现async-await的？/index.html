@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 5.4.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"blog.lovinghlx.cn","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="前言JavaScript 是基于单线程设计的，造成了 JavaScript 中出现大量回调的场景。当 JavaScript 中有大量的异步操作时，会降低代码的可读性, 其中最容易造成的就是回调地狱的问题。 JavaScript 社区探索并推出了一系列的方案，从“Promise 加 then”到“generator 加 co”方案，再到最近推出“终极”的 async&#x2F;await 方案，完美地解决了回">
+<meta property="og:type" content="article">
+<meta property="og:title" content="V8是如何实现async&#x2F;await的？">
+<meta property="og:url" content="http://blog.lovinghlx.cn/V8/V8%E6%98%AF%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0async-await%E7%9A%84%EF%BC%9F/">
+<meta property="og:site_name" content="AshesBlog">
+<meta property="og:description" content="前言JavaScript 是基于单线程设计的，造成了 JavaScript 中出现大量回调的场景。当 JavaScript 中有大量的异步操作时，会降低代码的可读性, 其中最容易造成的就是回调地狱的问题。 JavaScript 社区探索并推出了一系列的方案，从“Promise 加 then”到“generator 加 co”方案，再到最近推出“终极”的 async&#x2F;await 方案，完美地解决了回">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220415065312.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220415070237.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220415072646.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220415072950.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220415073343.png">
+<meta property="article:published_time" content="2022-04-15T06:22:21.000Z">
+<meta property="article:modified_time" content="2022-04-14T23:42:50.391Z">
+<meta property="article:author" content="SevenNorth">
+<meta property="article:tag" content="V8">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220415065312.png">
+
+<link rel="canonical" href="http://blog.lovinghlx.cn/V8/V8%E6%98%AF%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0async-await%E7%9A%84%EF%BC%9F/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>V8是如何实现async/await的？ | AshesBlog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">AshesBlog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">六畳一间的堂吉诃德</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://blog.lovinghlx.cn/V8/V8%E6%98%AF%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0async-await%E7%9A%84%EF%BC%9F/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/llyq.jpg">
+      <meta itemprop="name" content="SevenNorth">
+      <meta itemprop="description" content="野渡无人舟自横">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="AshesBlog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          V8是如何实现async/await的？
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-04-15 06:22:21" itemprop="dateCreated datePublished" datetime="2022-04-15T06:22:21+00:00">2022-04-15</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-04-14 23:42:50" itemprop="dateModified" datetime="2022-04-14T23:42:50+00:00">2022-04-14</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/V8/" itemprop="url" rel="index"><span itemprop="name">V8</span></a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h2><p>JavaScript 是基于单线程设计的，造成了 JavaScript 中出现大量回调的场景。当 JavaScript 中有大量的异步操作时，会降低代码的可读性, 其中最容易造成的就是回调地狱的问题。</p>
+<p>JavaScript 社区探索并推出了一系列的方案，从“Promise 加 then”到“generator 加 co”方案，再到最近推出“终极”的 async/await 方案，完美地解决了回调地狱所造成的问题。</p>
+<span id="more"></span>
+
+<h2 id="什么是回调地狱"><a href="#什么是回调地狱" class="headerlink" title="什么是回调地狱"></a>什么是回调地狱</h2><p>假设你们老板给了你一个小需求，要求你从网络获取某个用户的用户名，获取用户名称的步骤是先通过一个 id_url 来获取用户 ID，然后再使用获取到的用户 ID 作为另外一个 name_url 的参数，以获取用户名。</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">const</span> id_url = <span class="string">&#x27;https://xxx/yyy/zzz/id&#x27;</span></span><br><span class="line"><span class="keyword">const</span> name_yrl = <span class="string">&#x27;https://xxx/yyy/zzz/name&#x27;</span></span><br></pre></td></tr></table></figure>
+
+<p>最容易想到的方案是使用 XMLHttpRequest，并按照前后顺序异步请求这两个 URL。具体地讲，你可以先定义一个 GetUrlContent 函数，这个函数负责封装 XMLHttpRequest 来下载 URL 文件内容，由于下载过程是异步执行的，所以需要通过回调函数来触发返回结果。那么我们需要给 GetUrlContent 传递一个回调函数 result_callback，来触发异步下载的结果。</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//result_callback：下载结果的回调函数</span></span><br><span class="line"><span class="comment">//url：需要获取URL的内容</span></span><br><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">GetUrlContent</span>(<span class="params">result_callback, url</span>) </span>&#123;</span><br><span class="line">  <span class="keyword">let</span> request = <span class="keyword">new</span> XMLHttpRequest()</span><br><span class="line">  request.open(<span class="string">&#x27;GET&#x27;</span>, url)</span><br><span class="line">  request.responseType = <span class="string">&#x27;text&#x27;</span></span><br><span class="line">  request.onload = <span class="function"><span class="keyword">function</span> (<span class="params"></span>) </span>&#123;</span><br><span class="line">    result_callback(request.response)</span><br><span class="line">  &#125;</span><br><span class="line">  request.send()</span><br><span class="line"></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">IDCallback</span>(<span class="params">id</span>) </span>&#123;</span><br><span class="line">  <span class="built_in">console</span>.log(id)</span><br><span class="line">  <span class="keyword">let</span> new_name_url = name_url + <span class="string">&quot;?id=&quot;</span> + id</span><br><span class="line">  GetUrlContent(NameCallback, new_name_url)</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">NameCallback</span>(<span class="params">name</span>) </span>&#123;</span><br><span class="line">  <span class="built_in">console</span>.log(name)</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">GetUrlContent(IDCallback, id_url)</span><br></pre></td></tr></table></figure>
+
+<p>在这段代码中：</p>
+<ul>
+<li>先使用 GetUrlContent 函数来异步下载用户 ID，之后再通过 IDCallback 回调函数来获取到请求的 ID；</li>
+<li>有了 ID 之后，再在 IDCallback 函数内部，使用获取到的 ID 和 name_url 合并成新的获取用户名称的 URL 地址；</li>
+<li>然后，再次使用 GetUrlContent 来获取用户名称，返回的用户名称会触发 NameCallback 回调函数，可以在 NameCallback 函数内部处理最终的返回结果。</li>
+</ul>
+<p>可以看到，每次请求网络内容，都需要设置一个回调函数，用来返回异步请求的结果，这些穿插在代码之间的回调函数打乱了代码原有的顺序，比如正常的代码顺序是先获取 ID，再获取用户名。但是由于使用了异步回调函数，获取用户名代码的位置，反而在获取用户 ID 的代码之上了，这就直接导致了代码逻辑的不连贯、不线性，非常不符合人的直觉。</p>
+<p>因此，异步回调模式影响到编码方式，如果在代码中过多地使用异步回调函数，会将整个代码逻辑打乱，从而让代码变得难以理解，这也就是经常所说的回调地狱问题。</p>
+<h2 id="使用Promise解决回调地狱问题"><a href="#使用Promise解决回调地狱问题" class="headerlink" title="使用Promise解决回调地狱问题"></a>使用Promise解决回调地狱问题</h2><p>为了解决回调地狱的问题，JavaScript 做了大量探索，最开始引入了 Promise 来解决部分回调地狱的问题，比如 fetch 就使用 Promise 的技术，可以使用 fetch 来改造上面这段代码，改造后的代码如下所示：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">fetch(id_url)</span><br><span class="line">  .then(<span class="function">(<span class="params">response</span>) =&gt;</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> response.text()</span><br><span class="line">  &#125;)</span><br><span class="line">  .then(<span class="function">(<span class="params">response</span>) =&gt;</span> &#123;</span><br><span class="line">    <span class="keyword">let</span> new_name_url = name_url + <span class="string">&quot;?id=&quot;</span> + response</span><br><span class="line">    <span class="keyword">return</span> fetch(new_name_url)</span><br><span class="line">  &#125;).then(<span class="function">(<span class="params">response</span>) =&gt;</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> response.text()</span><br><span class="line">  &#125;).then(<span class="function">(<span class="params">response</span>) =&gt;</span> &#123;</span><br><span class="line">    <span class="built_in">console</span>.log(response) <span class="comment">//输出最终的结果</span></span><br><span class="line">  &#125;)</span><br></pre></td></tr></table></figure>
+
+<p>可以看到，改造后的代码是先获取用户 ID，等到返回了结果之后，再利用用户 ID 生成新的获取用户名称的 URL，然后再获取用户名，最终返回用户名。使用 Promise，我们就可以按照线性的思路来编写代码，非常符合人的直觉。所以说，使用 Promise 可以解决回调地狱中编码不线性的问题。</p>
+<h2 id="使用-Generator-函数实现更加线性化逻辑"><a href="#使用-Generator-函数实现更加线性化逻辑" class="headerlink" title="使用 Generator 函数实现更加线性化逻辑"></a>使用 Generator 函数实现更加线性化逻辑</h2><p>虽然使用 Promise 可以解决回调地狱中编码不线性的问题，但这种方式充满了 Promise 的 then() 方法，如果处理流程比较复杂的话，那么整段代码将充斥着大量的 then，异步逻辑之间依然被 then 方法打断了，因此这种方式的语义化不明显，代码不能很好地表示执行流程。</p>
+<p>那么就需要思考，能不能更进一步，像编写同步代码的方式来编写异步代码，比如：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">getResult</span>(<span class="params"></span>)</span>&#123;</span><br><span class="line">  <span class="keyword">let</span> id = getUserID()</span><br><span class="line">  <span class="keyword">let</span> name = getUserName(id)</span><br><span class="line">  <span class="keyword">return</span> name</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>由于 getUserID() 和 getUserName() 都是异步请求，如果要实现这种线性的编码方式，那么一个可行的方案就是<strong>执行到异步请求的时候，暂停当前函数，等异步请求返回了结果，再恢复该函数</strong>。</p>
+<p>具体地讲，执行到 getUserID() 时暂停 GetResult 函数，然后浏览器在后台处理实际的请求过程，待 ID 数据返回时，再来恢复 GetResult 函数。接下来再执行 getUserName 来获取到用户名，由于 getUserName() 也是一个异步请求，所以在使用 getUserName() 的同时，依然需要暂停 GetResult 函数的执行，等到 getUserName() 返回了用户名数据，再恢复 GetResult 函数的执行，最终 getUserName() 函数返回了 name 信息。</p>
+<p>这个思维模型大致如下所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220415065312.png" alt="函数暂停/恢复思维模型"></p>
+<p>可以看出，这个模型的关键就是实现<strong>函数暂停执行</strong>和<strong>函数恢复执行</strong>，而生成器就是为了实现暂停函数和恢复函数而设计的。</p>
+<p>生成器函数是一个带星号函数，配合 yield 就可以实现函数的暂停和恢复，生成器的具体使用方式：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">function</span>* <span class="title">getResult</span>(<span class="params"></span>) </span>&#123;</span><br><span class="line">  <span class="keyword">yield</span> <span class="string">&#x27;getUserID&#x27;</span></span><br><span class="line">  <span class="keyword">yield</span> <span class="string">&#x27;getUserName&#x27;</span></span><br><span class="line">  <span class="keyword">return</span> <span class="string">&#x27;name&#x27;</span></span><br><span class="line">&#125;</span><br><span class="line"><span class="keyword">let</span> result = getResult()</span><br><span class="line"><span class="built_in">console</span>.log(result.next().value)</span><br><span class="line"><span class="built_in">console</span>.log(result.next().value)</span><br><span class="line"><span class="built_in">console</span>.log(result.next().value)</span><br><span class="line"></span><br><span class="line"><span class="comment">// getUserID</span></span><br><span class="line"><span class="comment">// getUserName</span></span><br><span class="line"><span class="comment">// name</span></span><br></pre></td></tr></table></figure>
+<p>执行上面这段代码，观察输出结果，会发现函数 getResult 并不是一次执行完的，而是全局代码和 getResult 函数交替执行。</p>
+<p>这就是生成器函数的特性，在生成器内部，如果遇到 yield 关键字，那么 V8 将返回关键字后面的内容给外部，并暂停该生成器函数的执行。生成器暂停执行后，外部的代码便开始执行，外部代码如果想要恢复生成器的执行，可以使用 result.next 方法。</p>
+<p>V8 是怎么实现生成器函数的暂停执行和恢复执行的呢？</p>
+<p>这背后的魔法就是<strong>协程，协程是一种比线程更加轻量级的存在</strong>。你可以把协程看成是跑在线程上的任务，一个线程上可以存在多个协程，但是在线程上同时只能执行一个协程。比如，当前执行的是 A 协程，要启动 B 协程，那么 A 协程就需要将主线程的控制权交给 B 协程，这就体现在 A 协程暂停执行，B 协程恢复执行；同样，也可以从 B 协程中启动 A 协程。通常，<strong>如果从 A 协程启动 B 协程，就把 A 协程称为 B 协程的父协程</strong>。</p>
+<p>正如一个进程可以拥有多个线程一样，一个线程也可以拥有多个协程。每一时刻，该线程只能执行其中某一个协程。最重要的是，协程不是被操作系统内核所管理，而完全是由程序所控制（也就是在用户态执行）。这样带来的好处就是性能得到了很大的提升，不会像线程切换那样消耗资源。</p>
+<p>上面代码的“协程执行流程图”，可对照代码进行分析：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220415070237.png" alt="“协程执行流程图”"></p>
+<p>在 JavaScript 中，生成器就是协程的一种实现方式</p>
+<p>因为生成器可以暂停函数的执行，所以，将所有异步调用的方式，写成同步调用的方式，比如使用生成器来实现上面的需求，代码如下所示：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">function</span>* <span class="title">getResult</span>(<span class="params"></span>) </span>&#123;</span><br><span class="line">  <span class="keyword">let</span> id_res = <span class="keyword">yield</span> fetch(id_url);</span><br><span class="line">  <span class="built_in">console</span>.log(id_res)</span><br><span class="line">  <span class="keyword">let</span> id_text = <span class="keyword">yield</span> id_res.text();</span><br><span class="line">  <span class="built_in">console</span>.log(id_text)</span><br><span class="line"></span><br><span class="line">  <span class="keyword">let</span> new_name_url = name_url + <span class="string">&quot;?id=&quot;</span> + id_text</span><br><span class="line">  <span class="built_in">console</span>.log(new_name_url)</span><br><span class="line"></span><br><span class="line">  <span class="keyword">let</span> name_res = <span class="keyword">yield</span> fetch(new_name_url)</span><br><span class="line">  <span class="built_in">console</span>.log(name_res)</span><br><span class="line">  <span class="keyword">let</span> name_text = <span class="keyword">yield</span> name_res.text()</span><br><span class="line">  <span class="built_in">console</span>.log(name_text)</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="keyword">let</span> result = getResult()</span><br><span class="line">result.next().value.then(<span class="function">(<span class="params">response</span>) =&gt;</span> &#123;</span><br><span class="line">  <span class="keyword">return</span> result.next(response).value</span><br><span class="line">&#125;).then(<span class="function">(<span class="params">response</span>) =&gt;</span> &#123;</span><br><span class="line">  <span class="keyword">return</span> result.next(response).value</span><br><span class="line">&#125;).then(<span class="function">(<span class="params">response</span>) =&gt;</span> &#123;</span><br><span class="line">  <span class="keyword">return</span> result.next(response).value</span><br><span class="line">&#125;).then(<span class="function">(<span class="params">response</span>) =&gt;</span> &#123;</span><br><span class="line">  <span class="keyword">return</span> result.next(response).value</span><br><span class="line">&#125;)</span><br></pre></td></tr></table></figure>
+
+<p>这样，就可以将同步、异步逻辑全部写进生成器函数 getResult 的内部，然后在外面依次使用一段代码来控制生成器的暂停和恢复执行。以上，就是协程和 Promise 相互配合执行的大致流程。</p>
+<p>通常，可以把执行生成器的代码封装成一个函数，这个函数驱动了 getResult 函数继续往下执行，把这个执行生成器代码的函数称为执行器（可参考著名的 co 框架），如下面这种方式：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">function</span>* <span class="title">getResult</span>(<span class="params"></span>) </span>&#123;</span><br><span class="line">  <span class="keyword">let</span> id_res = <span class="keyword">yield</span> fetch(id_url);</span><br><span class="line">  <span class="built_in">console</span>.log(id_res)</span><br><span class="line">  <span class="keyword">let</span> id_text = <span class="keyword">yield</span> id_res.text();</span><br><span class="line">  <span class="built_in">console</span>.log(id_text)</span><br><span class="line"></span><br><span class="line">  <span class="keyword">let</span> new_name_url = name_url + <span class="string">&quot;?id=&quot;</span> + id_text</span><br><span class="line">  <span class="built_in">console</span>.log(new_name_url)</span><br><span class="line"></span><br><span class="line">  <span class="keyword">let</span> name_res = <span class="keyword">yield</span> fetch(new_name_url)</span><br><span class="line">  <span class="built_in">console</span>.log(name_res)</span><br><span class="line">  <span class="keyword">let</span> name_text = <span class="keyword">yield</span> name_res.text()</span><br><span class="line">  <span class="built_in">console</span>.log(name_text)</span><br><span class="line">&#125;</span><br><span class="line">co(getResult())</span><br></pre></td></tr></table></figure>
+
+<h2 id="async-await：异步编程的“终极”方案"><a href="#async-await：异步编程的“终极”方案" class="headerlink" title="async/await：异步编程的“终极”方案"></a>async/await：异步编程的“终极”方案</h2><p>由于生成器函数可以暂停，因此可以在生成器内部编写完整的异步逻辑代码，不过生成器依然需要使用额外的 co 函数来驱动生成器函数的执行，这一点非常不友好。</p>
+<p>基于这个原因，<strong>ES7 引入了 async/await，这是 JavaScript 异步编程的一个重大改进，它改进了生成器的缺点，提供了在不阻塞主线程的情况下使用同步代码实现异步访问资源的能力</strong>。可以参考下面这段使用 async/await 改造后的代码：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">async</span> <span class="function"><span class="keyword">function</span> <span class="title">getResult</span>(<span class="params"></span>) </span>&#123;</span><br><span class="line">  <span class="keyword">try</span> &#123;</span><br><span class="line">      <span class="keyword">let</span> id_res = <span class="keyword">await</span> fetch(id_url)</span><br><span class="line">      <span class="keyword">let</span> id_text = <span class="keyword">await</span> id_res.text()</span><br><span class="line">      <span class="built_in">console</span>.log(id_text)</span><br><span class="line"></span><br><span class="line">      <span class="keyword">let</span> new_name_url = name_url+<span class="string">&quot;?id=&quot;</span>+id_text</span><br><span class="line">      <span class="built_in">console</span>.log(new_name_url)</span><br><span class="line"></span><br><span class="line">      <span class="keyword">let</span> name_res = <span class="keyword">await</span> fetch(new_name_url)</span><br><span class="line">      <span class="keyword">let</span> name_text = <span class="keyword">await</span> name_res.text()</span><br><span class="line">      <span class="built_in">console</span>.log(name_text)</span><br><span class="line">  &#125; <span class="keyword">catch</span> (err) &#123;</span><br><span class="line">      <span class="built_in">console</span>.error(err)</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br><span class="line">getResult()</span><br></pre></td></tr></table></figure>
+
+<p>观察上面这段代码，会发现整个异步处理的逻辑都是使用同步代码的方式来实现的，而且还支持 try catch 来捕获异常，这就是完全在写同步代码，所以非常符合人的线性思维。</p>
+<p>虽然这种方式看起来像是同步代码，但是实际上它又是异步执行的，也就是说，在执行到 await fetch 的时候，整个函数会暂停等待 fetch 的执行结果，等到函数返回时，再恢复该函数，然后继续往下执行。</p>
+<p>其实 async/await 技术背后的秘密就是 Promise 和生成器应用，往底层说，就是微任务和协程应用。要搞清楚 async 和 await 的工作原理，我们就得对 async 和 await 分开分析。</p>
+<p>先来看看 async 到底是什么。根据 MDN 定义，async 是一个通过异**步执行并隐式返回 Promise **作为结果的函数。</p>
+<p>这里需要重点关注异步执行这个词，简单地理解，如果在 async 函数里面使用了 await，那么此时 async 函数就会暂停执行，并等待合适的时机来恢复执行，所以说 async 是一个异步执行的函数。</p>
+<p>那么暂停之后，什么时机恢复 async 函数的执行呢？要解释这个问题，可以先来看看，V8 是如何处理 await 后面的内容的。</p>
+<p>通常，await 可以等待两种类型的表达式：</p>
+<ul>
+<li>可以是任何普通表达式;</li>
+<li>可以是一个 Promise 对象的表达式。</li>
+</ul>
+<p>如果 await 等待的是一个 Promise 对象，它就会暂停执行生成器函数，直到 Promise 对象的状态变成 resolve，才会恢复执行，然后得到 resolve 的值，作为 await 表达式的运算结果。</p>
+<p>看下面这样一段代码：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">NeverResolvePromise</span>(<span class="params"></span>)</span>&#123;</span><br><span class="line">  <span class="keyword">return</span> <span class="keyword">new</span> <span class="built_in">Promise</span>(<span class="function">(<span class="params">resolve, reject</span>) =&gt;</span> &#123;&#125;)</span><br><span class="line">&#125;</span><br><span class="line"><span class="keyword">async</span> <span class="function"><span class="keyword">function</span> <span class="title">getResult</span>(<span class="params"></span>) </span>&#123;</span><br><span class="line">  <span class="keyword">let</span> a = <span class="keyword">await</span> NeverResolvePromise()</span><br><span class="line">  <span class="built_in">console</span>.log(a)</span><br><span class="line">&#125;</span><br><span class="line">getResult()</span><br><span class="line"><span class="built_in">console</span>.log(<span class="number">0</span>)</span><br></pre></td></tr></table></figure>
+
+<p>这一段代码，使用 await 等待一个没有 resolve 的 Promise，那么这也就意味着，getResult 函数会一直等待下去。async 修饰的函数会有自己的协程，那么它代码内部创建的宏任务，主线程有空了还是会拿消息队列中的宏任务来执行，如果await等待了一个never resolve，那么它后面的代码就再也不会执行！但是却不会影响消息队列中键盘鼠标事件等其它任务的执行！</p>
+<p>和生成器函数一样，使用了 async 声明的函数在执行时，也是一个单独的协程，我们可以使用 await 来暂停该协程，由于 await 等待的是一个 Promise 对象，我们可以 resolve 来恢复该协程。</p>
+<p>下面是从协程的视角，画的这段代码的执行流程图，可以对照参考下：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220415072646.png" alt="协程视角代码执行流程图"></p>
+<p>如果 await 等待的对象已经变成了 resolve 状态，那么 V8 就会恢复该协程的执行，修改下上面的代码，来证明下这个过程：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">HaveResolvePromise</span>(<span class="params"></span>)</span>&#123;</span><br><span class="line">  <span class="keyword">return</span> <span class="keyword">new</span> <span class="built_in">Promise</span>(<span class="function">(<span class="params">resolve, reject</span>) =&gt;</span> &#123;</span><br><span class="line">      <span class="built_in">setTimeout</span>(<span class="function">() =&gt;</span> &#123;</span><br><span class="line">          resolve(<span class="number">100</span>)</span><br><span class="line">        &#125;, <span class="number">0</span>);</span><br><span class="line">    &#125;)</span><br><span class="line">&#125;</span><br><span class="line"><span class="keyword">async</span> <span class="function"><span class="keyword">function</span> <span class="title">getResult</span>(<span class="params"></span>) </span>&#123;</span><br><span class="line">  <span class="built_in">console</span>.log(<span class="number">1</span>)</span><br><span class="line">  <span class="keyword">let</span> a = <span class="keyword">await</span> HaveResolvePromise()</span><br><span class="line">  <span class="built_in">console</span>.log(a)</span><br><span class="line">  <span class="built_in">console</span>.log(<span class="number">2</span>)</span><br><span class="line">&#125;</span><br><span class="line"><span class="built_in">console</span>.log(<span class="number">0</span>)</span><br><span class="line">getResult()</span><br><span class="line"><span class="built_in">console</span>.log(<span class="number">3</span>)</span><br></pre></td></tr></table></figure>
+
+<p>具体执行流程可以参看下图：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220415072950.png" alt="执行流程"></p>
+<p>如果 await 等待的是一个非 Promise 对象，比如 await 100，那么 V8 会隐式地将 await 后面的 100 包装成一个已经 resolve 的对象，其效果等价于下面这段代码：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">ResolvePromise</span>(<span class="params"></span>) </span>&#123;</span><br><span class="line">  <span class="keyword">return</span> <span class="keyword">new</span> <span class="built_in">Promise</span>(<span class="function">(<span class="params">resolve, reject</span>) =&gt;</span> &#123;</span><br><span class="line">    resolve(<span class="number">100</span>)</span><br><span class="line">  &#125;)</span><br><span class="line">&#125;</span><br><span class="line"><span class="keyword">async</span> <span class="function"><span class="keyword">function</span> <span class="title">getResult</span>(<span class="params"></span>) </span>&#123;</span><br><span class="line">  <span class="keyword">let</span> a = <span class="keyword">await</span> ResolvePromise()</span><br><span class="line">  <span class="built_in">console</span>.log(a)</span><br><span class="line">&#125;</span><br><span class="line">getResult()</span><br><span class="line"><span class="built_in">console</span>.log(<span class="number">3</span>)</span><br></pre></td></tr></table></figure>
+
+<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>Callback 模式的异步编程模型需要实现大量的回调函数，大量的回调函数会打乱代码的正常逻辑，使得代码变得不线性、不易阅读，这就是我们所说的回调地狱问题。</p>
+<p>使用 Promise 能很好地解决回调地狱的问题，我们可以按照线性的思路来编写代码，这个过程是线性的，非常符合人的直觉。</p>
+<p>但是这种方式充满了 Promise 的 then() 方法，如果处理流程比较复杂的话，那么整段代码将充斥着大量的 then，语义化不明显，代码不能很好地表示执行流程。</p>
+<p>想要通过线性的方式来编写异步代码，要实现这个理想，最关键的是要能实现函数暂停和恢复执行的功能。而生成器就可以实现函数暂停和恢复，可以在生成器中使用同步代码的逻辑来异步代码 (实现该逻辑的核心是协程)，但是在生成器之外，还需要一个触发器来驱动生成器的执行，因此这依然不是最终想要的方案。</p>
+<p>最终方案就是 async/await，async 是一个可以暂停和恢复执行的函数，可以在 async 函数内部使用 await 来暂停 async 函数的执行，await 等待的是一个 Promise 对象，如果 Promise 的状态变成 resolve 或者 reject，那么 async 函数会恢复执行。因此，使用 async/await 可以实现以同步的方式编写异步代码这一目标。</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220415073343.png" alt="前端异步编程的方案史"></p>
+
+    </div>
+
+    
+    
+    
+    
+    <div>
+      <div>
+    
+    <div style="text-align:center;color:#bfbfbf;font-size:16px;">
+        <span>-------- 本文结束 </span>
+        <i class="fa fa-heartbeat"></i>
+        <span> 感谢阅读 --------</span>
+    </div>
+    
+</div>
+    </div>
+    
+        <!-- JS库 clipboard 拷贝内容到粘贴板-->
+<script src="https://cdn.bootcss.com/clipboard.js/2.0.1/clipboard.min.js"></script>
+
+<!-- JS库 sweetalert 显示提示信息-->
+<script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
+
+<ul class="post-copyright">
+  <!-- 本文标题 -->
+  <li>
+    <strong>本文标题： </strong>
+    V8是如何实现async/await的？
+  </li>
+
+  <!-- 本文作者 -->
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>
+    SevenNorth
+  </li>
+
+  <!-- 创建时间 -->
+  <li>
+    <strong>创建时间： </strong>
+    2022年04月15日 - 06时04分
+  </li>
+
+  <!-- 修改时间 -->
+  <li>
+    <strong>修改时间： </strong>
+    2022年04月14日 - 23时04分
+  </li>
+
+  <!-- 引用链接 -->
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="http://blog.lovinghlx.cn/V8/V8%E6%98%AF%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0async-await%E7%9A%84%EF%BC%9F/" title="V8是如何实现async/await的？"
+      >http://blog.lovinghlx.cn/V8/V8%E6%98%AF%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0async-await%E7%9A%84%EF%BC%9F/</a
+    >
+    <span class="copy-path" title="点击复制引用链接"
+      ><i
+        style="cursor: pointer"
+        class="fa fa-clipboard"
+        data-clipboard-text="[SevenNorth's Blog | V8是如何实现async/await的？](http://blog.lovinghlx.cn/V8/V8%E6%98%AF%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0async-await%E7%9A%84%EF%BC%9F/)"
+        aria-label="链接复制成功"
+      ></i
+    ></span>
+  </li>
+
+  <!-- 版权声明 -->
+  <li class="post-copyright-license">
+    <strong
+      >版权声明：
+    </strong>
+    本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="external nofollow" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+
+<script>
+  var clipboard = new ClipboardJS(".fa-clipboard");
+  clipboard.on("success", function(target) {
+    var message = document.createElement("div");
+    message.innerHTML =
+      '<i class="fa fa-check-circle message-icon"></i><span class="message-content">' +
+      target.trigger.getAttribute("aria-label") +
+      "</span>";
+    swal({
+      content: message,
+      className: "copy-success-message",
+      timer: 1000,
+      button: false
+    });
+  });
+</script>
+
+      <footer class="post-footer">
+          
+          <div class="post-tags">
+              <a href="/tags/V8/" rel="tag"><i class="fa fa-tag"></i> V8</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/V8/V8%E6%98%AF%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0%E5%BE%AE%E4%BB%BB%E5%8A%A1%E7%9A%84%EF%BC%9F/" rel="prev" title="V8是如何实现微任务的？">
+      <i class="fa fa-chevron-left"></i> V8是如何实现微任务的？
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%89%8D%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">前言</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BB%80%E4%B9%88%E6%98%AF%E5%9B%9E%E8%B0%83%E5%9C%B0%E7%8B%B1"><span class="nav-number">2.</span> <span class="nav-text">什么是回调地狱</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BD%BF%E7%94%A8Promise%E8%A7%A3%E5%86%B3%E5%9B%9E%E8%B0%83%E5%9C%B0%E7%8B%B1%E9%97%AE%E9%A2%98"><span class="nav-number">3.</span> <span class="nav-text">使用Promise解决回调地狱问题</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BD%BF%E7%94%A8-Generator-%E5%87%BD%E6%95%B0%E5%AE%9E%E7%8E%B0%E6%9B%B4%E5%8A%A0%E7%BA%BF%E6%80%A7%E5%8C%96%E9%80%BB%E8%BE%91"><span class="nav-number">4.</span> <span class="nav-text">使用 Generator 函数实现更加线性化逻辑</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#async-await%EF%BC%9A%E5%BC%82%E6%AD%A5%E7%BC%96%E7%A8%8B%E7%9A%84%E2%80%9C%E7%BB%88%E6%9E%81%E2%80%9D%E6%96%B9%E6%A1%88"><span class="nav-number">5.</span> <span class="nav-text">async&#x2F;await：异步编程的“终极”方案</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%80%BB%E7%BB%93"><span class="nav-number">6.</span> <span class="nav-text">总结</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <a href="/">
+      <img class="site-author-image" itemprop="image" alt="SevenNorth"
+        src="/images/llyq.jpg">
+    </a>
+  <p class="site-author-name" itemprop="name">SevenNorth</p>
+  <div class="site-description" itemprop="description">野渡无人舟自横</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">5</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">2</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/SevenNorth" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;SevenNorth" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heartbeat"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">SevenNorth</span>
+</div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+  
+
+    <script async src="/js/cursor/fireworks.js"></script>
+
+</body>
+</html>
