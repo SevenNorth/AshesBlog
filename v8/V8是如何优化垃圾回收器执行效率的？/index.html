@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 5.4.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"blog.lovinghlx.cn","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="前言由于 JavaScript 是运行在主线程之上的，因此，一旦执行垃圾回收算法，都需要将正在执行的 JavaScript 脚本暂停下来，待垃圾回收完毕后再恢复脚本执行。这种行为叫做全停顿（Stop-The-World）。 一次完整的垃圾回收分为标记和清理两个阶段，垃圾数据标记之后，V8 会继续执行清理和整理操作，虽然主垃圾回收器和副垃圾回收器的处理方式稍微有些不同，但它们都是主线程上执行的，执行">
+<meta property="og:type" content="article">
+<meta property="og:title" content="V8是如何优化垃圾回收器执行效率的？">
+<meta property="og:url" content="http://blog.lovinghlx.cn/v8/V8%E6%98%AF%E5%A6%82%E4%BD%95%E4%BC%98%E5%8C%96%E5%9E%83%E5%9C%BE%E5%9B%9E%E6%94%B6%E5%99%A8%E6%89%A7%E8%A1%8C%E6%95%88%E7%8E%87%E7%9A%84%EF%BC%9F/">
+<meta property="og:site_name" content="AshesBlog">
+<meta property="og:description" content="前言由于 JavaScript 是运行在主线程之上的，因此，一旦执行垃圾回收算法，都需要将正在执行的 JavaScript 脚本暂停下来，待垃圾回收完毕后再恢复脚本执行。这种行为叫做全停顿（Stop-The-World）。 一次完整的垃圾回收分为标记和清理两个阶段，垃圾数据标记之后，V8 会继续执行清理和整理操作，虽然主垃圾回收器和副垃圾回收器的处理方式稍微有些不同，但它们都是主线程上执行的，执行">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220419062918.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220419063448.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220419065944.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220419070309.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220419070459.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220419071231.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220419071515.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220419072552.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220419072956.png">
+<meta property="article:published_time" content="2022-04-19T06:25:48.000Z">
+<meta property="article:modified_time" content="2022-04-18T23:37:34.076Z">
+<meta property="article:author" content="SevenNorth">
+<meta property="article:tag" content="v8">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220419062918.png">
+
+<link rel="canonical" href="http://blog.lovinghlx.cn/v8/V8%E6%98%AF%E5%A6%82%E4%BD%95%E4%BC%98%E5%8C%96%E5%9E%83%E5%9C%BE%E5%9B%9E%E6%94%B6%E5%99%A8%E6%89%A7%E8%A1%8C%E6%95%88%E7%8E%87%E7%9A%84%EF%BC%9F/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>V8是如何优化垃圾回收器执行效率的？ | AshesBlog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">AshesBlog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">六畳一间的堂吉诃德</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://blog.lovinghlx.cn/v8/V8%E6%98%AF%E5%A6%82%E4%BD%95%E4%BC%98%E5%8C%96%E5%9E%83%E5%9C%BE%E5%9B%9E%E6%94%B6%E5%99%A8%E6%89%A7%E8%A1%8C%E6%95%88%E7%8E%87%E7%9A%84%EF%BC%9F/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/llyq.jpg">
+      <meta itemprop="name" content="SevenNorth">
+      <meta itemprop="description" content="野渡无人舟自横">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="AshesBlog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          V8是如何优化垃圾回收器执行效率的？
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2022-04-19 06:25:48" itemprop="dateCreated datePublished" datetime="2022-04-19T06:25:48+00:00">2022-04-19</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2022-04-18 23:37:34" itemprop="dateModified" datetime="2022-04-18T23:37:34+00:00">2022-04-18</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/v8/" itemprop="url" rel="index"><span itemprop="name">v8</span></a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h2><p>由于 JavaScript 是运行在主线程之上的，因此，一旦执行垃圾回收算法，都需要将正在执行的 JavaScript 脚本暂停下来，待垃圾回收完毕后再恢复脚本执行。这种行为叫做全停顿（Stop-The-World）。</p>
+<p>一次完整的垃圾回收分为标记和清理两个阶段，垃圾数据标记之后，V8 会继续执行清理和整理操作，虽然主垃圾回收器和副垃圾回收器的处理方式稍微有些不同，但它们都是主线程上执行的，执行垃圾回收过程中，会暂停主线程上的其他任务，具体全停顿的执行效果如下图所示：</p>
+<span id="more"></span>
+
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220419062918.png" alt="垃圾回收操作"></p>
+<p>可以看到，执行垃圾回收时会占用主线程的时间，如果在执行垃圾回收的过程中，垃圾回收器占用主线程时间过久，就像上面图片展示的那样，花费了 200 毫秒，在这 200 毫秒内，主线程是不能做其他事情的。比如，页面正在执行一个 JavaScript 动画，因为垃圾回收器在工作，就会导致这个动画在这 200 毫秒内无法执行，造成页面的卡顿 (Jank)，用户体验不佳。</p>
+<p>为了解决全停顿而造成的用户体验的问题，V8 团队经过了很多年的努力，向现有的垃圾回收器添加并行、并发和增量等垃圾回收技术，并且也已经取得了一些成效。这些技术主要是从两方面来解决垃圾回收效率问题的：</p>
+<ul>
+<li>第一，<strong>将一个完整的垃圾回收的任务拆分成多个小的任务</strong>，这样就消灭了单个长的垃圾回收任务；</li>
+<li>第二，<strong>将标记对象、移动对象等任务转移到后台线程进行</strong>，这会大大减少主线程暂停的时间，改善页面卡顿的问题，让动画、滚动和用户交互更加流畅。</li>
+</ul>
+<h2 id="并行回收"><a href="#并行回收" class="headerlink" title="并行回收"></a>并行回收</h2><p>既然执行一次完整的垃圾回收过程比较耗时，那么解决效率问题，第一个思路就是主线程在执行垃圾回收的任务时，引入多个辅助线程来并行处理，这样就会加速垃圾回收的执行速度，因此 V8 团队引入了并行回收机制。</p>
+<p>所谓并行回收，是指垃圾回收器在主线程上执行的过程中，还会开启多个协助线程，同时执行同样的回收工作，其工作模式如下图所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220419063448.png" alt="并行回收示意图"></p>
+<p>采用并行回收时，垃圾回收所消耗的时间，等于总体辅助线程所消耗的时间（原消耗时间/辅助线程数量），再加上一些同步开销的时间。这种方式比较简单，因为在执行垃圾标记的过程中，主线程并不会同时执行 JavaScript 代码，因此 JavaScript 代码也不会改变回收的过程。所以我们可以假定内存状态是静态的，因此只要确保同时只有一个协助线程在访问一个对象就好了。</p>
+<p>V8 的副垃圾回收器所采用的就是并行策略，它在执行垃圾回收的过程中，启动了多个线程来负责新生代中的垃圾清理操作，这些线程同时将对象空间中的数据移动到空闲区域。由于数据的地址发生了改变，所以还需要同步更新引用这些对象的指针。</p>
+<h2 id="增量回收"><a href="#增量回收" class="headerlink" title="增量回收"></a>增量回收</h2><p>虽然并行策略能增加垃圾回收的效率，能够很好地优化副垃圾回收器，但是这<strong>仍然是一种全停顿的垃圾回收方式</strong>，在主线程执行回收工作的时候才会开启辅助线程，这依然还会存在效率问题。比如老生代存放的都是一些大的对象，如 window、DOM 这种，完整执行老生代的垃圾回收，时间依然会很久。这些大的对象都是主垃圾回收器的，所以在 2011 年，V8 又引入了增量标记的方式，把这种垃圾回收的方式称之为<strong>增量式垃圾回收</strong>。</p>
+<p>所谓增量式垃圾回收，是指垃圾收集器将标记工作分解为更小的块，并且穿插在主线程不同的任务之间执行。采用增量垃圾回收时，垃圾回收器没有必要一次执行完整的垃圾回收过程，每次执行的只是整个垃圾回收过程中的一小部分工作，具体流程你可以参看下图：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220419065944.png" alt="增量回收过程"></p>
+<p>增量标记的算法，比全停顿的算法要稍微复杂，这主要是因为<strong>增量回收是并发的（concurrent）</strong>，要实现增量执行，需要满足两点要求：</p>
+<ol>
+<li>垃圾回收可以被随时暂停和重启，暂停时需要保存当时的扫描结果，等下一波垃圾回收来了之后，才能继续启动。</li>
+<li>在暂停期间，被标记好的垃圾数据如果被 JavaScript 代码修改了，那么垃圾回收器需要能够正确地处理。</li>
+</ol>
+<p>在没有采用增量算法之前，V8 使用黑色和白色来标记数据。在执行一次完整的垃圾回收之前，垃圾回收器会将所有的数据设置为白色，用来表示这些数据还没有被标记，然后垃圾回收器在会从 GC Roots 出发，将所有能访问到的数据标记为黑色。遍历结束之后，被标记为黑色的数据就是活动数据，那些白色数据就是垃圾数据。如下图所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220419070309.png" alt="栈或者寄存器中的GC Root"></p>
+<p>如果内存中的数据只有两种状态，非黑即白，那么当暂停了当前的垃圾回收器之后，再次恢复垃圾回收器，那么垃圾回收器就不知道从哪个位置继续开始执行了。</p>
+<p>比如垃圾回收器执行了一小段增量回收后，被 V8 暂停了，然后主线程执行了一段 JavaScript 代码，然后垃圾回收器又被恢复了，那么恢复时内存状态就如下图所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220419070459.png" alt="恢复时内存状态"></p>
+<p>当垃圾回收器再次被启动的时候，它到底是从 A 节点开始标记，还是从 B 节点开始执行标注过程呢？因为没有其他额外的信息，所以垃圾回收器也不知道该如何处理了。</p>
+<p>为了解决这个问题，V8 采用了三色标记法，除了黑色和白色，还额外引入了灰色：</p>
+<ol>
+<li>黑色表示这个节点被 GC Root 引用到了，而且该节点的子节点都已经标记完成了;</li>
+<li>灰色表示这个节点被 GC Root 引用到，但子节点还没被垃圾回收器标记处理，也表明目前正在处理这个节点；</li>
+<li>白色表示这个节点没有被访问到，如果在本轮遍历结束时还是白色，那么这块数据就会被收回。</li>
+</ol>
+<p>引入灰色标记之后，垃圾回收器就可以依据当前内存中有没有灰色节点，来判断整个标记是否完成，如果没有灰色节点了，就可以进行清理工作了。如果还有灰色标记，当下次恢复垃圾回收器时，便从灰色的节点开始继续执行。</p>
+<p>举个例子来分析标记好的垃圾数据被 JavaScript 修改了，V8是如何处理的。</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">window</span>.a = <span class="built_in">Object</span>()</span><br><span class="line"><span class="built_in">window</span>.a.b = <span class="built_in">Object</span>()</span><br><span class="line"><span class="built_in">window</span>.a.b.c=<span class="built_in">Object</span>() </span><br></pre></td></tr></table></figure>
+
+<p>执行到这段代码时，垃圾回收器标记的结果如下图所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220419071231.png" alt="第一段代码执行后标记结果"></p>
+<p>接着执行另一段代码：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">window</span>.a.b = <span class="built_in">Object</span>() <span class="comment">//d</span></span><br></pre></td></tr></table></figure>
+
+<p>执行完之后，垃圾回收器又恢复执行了增量标记过程，由于 b 重新指向了 d 对象，所以 b 和 c 对象的连接就断开了。这时候代码的应用如下图所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220419071515.png" alt="第二段代码执行后标记结果"></p>
+<p>这就说明一个问题，当垃圾回收器将某个节点标记成了黑色，然后这个黑色的节点被续上了一个白色节点，那么垃圾回收器不会再次将这个白色节点标记为黑色节点了，因为它已经走过这个路径了。</p>
+<p>但是这个新的白色节点的确被引用了，所以还是需要想办法将其标记为黑色。</p>
+<p>为了解决这个问题，增量垃圾回收器添加了一个约束条件：<strong>不能让黑色节点指向白色节点</strong>。</p>
+<p>通常使用<strong>写屏障 (Write-barrier) 机制</strong>实现这个约束条件，也就是说，当发生了黑色的节点引用了白色的节点，写屏障机制会强制将被引用的白色节点变成灰色的，这样就保证了黑色节点不能指向白色节点的约束条件。这个方法也被称为<strong>强三色不变性</strong>，它保证了垃圾回收器能够正确地回收数据，因为在标记结束时的所有白色对象，对于垃圾回收器来说，都是不可到达的，可以安全释放。</p>
+<p>所以在 V8 中，每次执行如 window.a.b = value 的写操作之后，V8 会插入写屏障代码，强制将 value 这块内存标记为灰色。</p>
+<h2 id="并发-concurrent-回收"><a href="#并发-concurrent-回收" class="headerlink" title="并发 (concurrent) 回收"></a>并发 (concurrent) 回收</h2><p>虽然通过<strong>三色标记法</strong>和<strong>写屏障机制</strong>可以很好地实现增量垃圾回收，但是由于这些操作都是在主线程上执行的，如果主线程繁忙的时候，增量垃圾回收操作依然会增加主线程处理任务的**吞吐量 (throughput)**。</p>
+<p>结合并行回收可以将一些任务分配给辅助线程，但是并行回收依然会阻塞主线程。</p>
+<p><strong>并发回收，是指主线程在执行 JavaScript 的过程中，辅助线程能够在后台完成执行垃圾回收的操作</strong>。并发标记的流程大致如下图所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220419072552.png" alt="并发标记流程示意图"></p>
+<p>并发回收的优势非常明显，主线程不会被挂起，JavaScript 可以自由地执行 ，在执行的同时，辅助线程可以执行垃圾回收操作。</p>
+<p>但是并发回收却是这三种技术中最难的一种，这主要由以下两个原因导致的：</p>
+<ul>
+<li>第一，当主线程执行 JavaScript 时，堆中的内容随时都有可能发生变化，从而使得辅助线程之前做的工作完全无效；</li>
+<li>第二，主线程和辅助线程极有可能在同一时间去更改同一个对象，这就需要额外实现读写锁的一些功能了。</li>
+</ul>
+<p>尽管并行回收要额外解决以上两个问题，但是权衡利弊，并行回收这种方式的效率还是远高于其他方式的。</p>
+<p>这三种技术在实际使用中，并不是单独的存在，通常会将其融合在一起使用，V8 的主垃圾回收器就融合了这三种机制，来实现垃圾回收。</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220419072956.png" alt="多机制实现垃圾回收"></p>
+<p>主垃圾回收器同时采用了这三种策略：</p>
+<ul>
+<li>首先主垃圾回收器主要使用并发标记，我们可以看到，在主线程执行 JavaScript，辅助线程就开始执行标记操作了，所以说标记是在辅助线程中完成的。</li>
+<li>标记完成之后，再执行并行清理操作。主线程在执行清理操作时，多个辅助线程也在执行清理操作。</li>
+<li>另外，主垃圾回收器还采用了增量标记的方式，清理的任务会穿插在各种 JavaScript 任务之间执行。</li>
+</ul>
+<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>V8 最开始的垃圾回收器有两个特点，第一个是垃圾回收在主线程上执行，第二个特点是一次执行一个完整的垃圾回收流程。</p>
+<p>由于这两个原因，很容易造成主线程卡顿，所以 V8 采用了很多优化执行效率的方案。</p>
+<p>第一个方案是并行回收，在执行一个完整的垃圾回收过程中，垃圾回收器会使用多个辅助线程来并行执行垃圾回收。</p>
+<p>第二个方案是增量式垃圾回收，垃圾回收器将标记工作分解为更小的块，并且穿插在主线程不同的任务之间执行。采用增量垃圾回收时，垃圾回收器没有必要一次执行完整的垃圾回收过程，每次执行的只是整个垃圾回收过程中的一小部分工作。</p>
+<p>第三个方案是并发回收，回收线程在执行 JavaScript 的过程，辅助线程能够在后台完成的执行垃圾回收的操作。主垃圾回收器就综合采用了所有的方案，副垃圾回收器也采用了部分方案。</p>
+<hr>
+<p>参考：</p>
+<ol>
+<li><p><a target="_blank" rel="noopener" href="https://www.imyangyong.com/blog/2019/07/node/V8%E5%BC%95%E6%93%8E%E7%9A%84%E5%9E%83%E5%9C%BE%E5%9B%9E%E6%94%B6%E6%9C%BA%E5%88%B6/">V8引擎的垃圾回收机制</a></p>
+</li>
+<li><p><a target="_blank" rel="noopener" href="https://v8.dev/blog/trash-talk">Trash talk: the Orinoco garbage collector</a></p>
+</li>
+</ol>
+<hr>
+<p>TODO： 并发回收两个问题是怎么解决的？</p>
+
+    </div>
+
+    
+    
+    
+    
+    <div>
+      <div>
+    
+    <div style="text-align:center;color:#bfbfbf;font-size:16px;">
+        <span>-------- 本文结束 </span>
+        <i class="fa fa-heartbeat"></i>
+        <span> 感谢阅读 --------</span>
+    </div>
+    
+</div>
+    </div>
+    
+        <!-- JS库 clipboard 拷贝内容到粘贴板-->
+<script src="https://cdn.bootcss.com/clipboard.js/2.0.1/clipboard.min.js"></script>
+
+<!-- JS库 sweetalert 显示提示信息-->
+<script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
+
+<ul class="post-copyright">
+  <!-- 本文标题 -->
+  <li>
+    <strong>本文标题： </strong>
+    V8是如何优化垃圾回收器执行效率的？
+  </li>
+
+  <!-- 本文作者 -->
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>
+    SevenNorth
+  </li>
+
+  <!-- 创建时间 -->
+  <li>
+    <strong>创建时间： </strong>
+    2022年04月19日 - 06时04分
+  </li>
+
+  <!-- 修改时间 -->
+  <li>
+    <strong>修改时间： </strong>
+    2022年04月18日 - 23时04分
+  </li>
+
+  <!-- 引用链接 -->
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="http://blog.lovinghlx.cn/v8/V8%E6%98%AF%E5%A6%82%E4%BD%95%E4%BC%98%E5%8C%96%E5%9E%83%E5%9C%BE%E5%9B%9E%E6%94%B6%E5%99%A8%E6%89%A7%E8%A1%8C%E6%95%88%E7%8E%87%E7%9A%84%EF%BC%9F/" title="V8是如何优化垃圾回收器执行效率的？"
+      >http://blog.lovinghlx.cn/v8/V8%E6%98%AF%E5%A6%82%E4%BD%95%E4%BC%98%E5%8C%96%E5%9E%83%E5%9C%BE%E5%9B%9E%E6%94%B6%E5%99%A8%E6%89%A7%E8%A1%8C%E6%95%88%E7%8E%87%E7%9A%84%EF%BC%9F/</a
+    >
+    <span class="copy-path" title="点击复制引用链接"
+      ><i
+        style="cursor: pointer"
+        class="fa fa-clipboard"
+        data-clipboard-text="[SevenNorth's Blog | V8是如何优化垃圾回收器执行效率的？](http://blog.lovinghlx.cn/v8/V8%E6%98%AF%E5%A6%82%E4%BD%95%E4%BC%98%E5%8C%96%E5%9E%83%E5%9C%BE%E5%9B%9E%E6%94%B6%E5%99%A8%E6%89%A7%E8%A1%8C%E6%95%88%E7%8E%87%E7%9A%84%EF%BC%9F/)"
+        aria-label="链接复制成功"
+      ></i
+    ></span>
+  </li>
+
+  <!-- 版权声明 -->
+  <li class="post-copyright-license">
+    <strong
+      >版权声明：
+    </strong>
+    本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="external nofollow" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+
+<script>
+  var clipboard = new ClipboardJS(".fa-clipboard");
+  clipboard.on("success", function(target) {
+    var message = document.createElement("div");
+    message.innerHTML =
+      '<i class="fa fa-check-circle message-icon"></i><span class="message-content">' +
+      target.trigger.getAttribute("aria-label") +
+      "</span>";
+    swal({
+      content: message,
+      className: "copy-success-message",
+      timer: 1000,
+      button: false
+    });
+  });
+</script>
+
+      <footer class="post-footer">
+          
+          <div class="post-tags">
+              <a href="/tags/v8/" rel="tag"><i class="fa fa-tag"></i> v8</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/v8/V8%E7%9A%84%E4%B8%A4%E4%B8%AA%E5%9E%83%E5%9C%BE%E5%9B%9E%E6%94%B6%E5%99%A8%E6%98%AF%E5%A6%82%E4%BD%95%E5%B7%A5%E4%BD%9C%E7%9A%84%EF%BC%9F/" rel="prev" title="V8的两个垃圾回收器是如何工作的？">
+      <i class="fa fa-chevron-left"></i> V8的两个垃圾回收器是如何工作的？
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%89%8D%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">前言</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B9%B6%E8%A1%8C%E5%9B%9E%E6%94%B6"><span class="nav-number">2.</span> <span class="nav-text">并行回收</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%A2%9E%E9%87%8F%E5%9B%9E%E6%94%B6"><span class="nav-number">3.</span> <span class="nav-text">增量回收</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B9%B6%E5%8F%91-concurrent-%E5%9B%9E%E6%94%B6"><span class="nav-number">4.</span> <span class="nav-text">并发 (concurrent) 回收</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%80%BB%E7%BB%93"><span class="nav-number">5.</span> <span class="nav-text">总结</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <a href="/">
+      <img class="site-author-image" itemprop="image" alt="SevenNorth"
+        src="/images/llyq.jpg">
+    </a>
+  <p class="site-author-name" itemprop="name">SevenNorth</p>
+  <div class="site-description" itemprop="description">野渡无人舟自横</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">7</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">4</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/SevenNorth" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;SevenNorth" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heartbeat"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">SevenNorth</span>
+</div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+  
+
+    <script async src="/js/cursor/fireworks.js"></script>
+
+</body>
+</html>
