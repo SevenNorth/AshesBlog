@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 5.4.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"blog.lovinghlx.cn","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="Node 中的 readFile API 工作机制先通过两段代码来分析下同步和异步读文件 API 的区别。 12var fs &#x3D; require(&amp;#x27;fs&amp;#x27;)var data &#x3D; fs.readFileSync(&amp;#x27;test.js&amp;#x27;)  12345function fileHanlder(err, data)&amp;#123;  data.toString()  &amp;#">
+<meta property="og:type" content="article">
+<meta property="og:title" content="几种常见内存问题">
+<meta property="og:url" content="http://blog.lovinghlx.cn/v8/%E5%87%A0%E7%A7%8D%E5%B8%B8%E8%A7%81%E5%86%85%E5%AD%98%E9%97%AE%E9%A2%98/">
+<meta property="og:site_name" content="AshesBlog">
+<meta property="og:description" content="Node 中的 readFile API 工作机制先通过两段代码来分析下同步和异步读文件 API 的区别。 12var fs &#x3D; require(&amp;#x27;fs&amp;#x27;)var data &#x3D; fs.readFileSync(&amp;#x27;test.js&amp;#x27;)  12345function fileHanlder(err, data)&amp;#123;  data.toString()  &amp;#">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220420071536.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220420072217.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220420072658.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220420072930.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220421062912.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220421063226.png">
+<meta property="og:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220421070218.png">
+<meta property="article:published_time" content="2022-04-20T06:59:37.000Z">
+<meta property="article:modified_time" content="2022-04-20T23:19:53.744Z">
+<meta property="article:author" content="SevenNorth">
+<meta property="article:tag" content="v8">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220420071536.png">
+
+<link rel="canonical" href="http://blog.lovinghlx.cn/v8/%E5%87%A0%E7%A7%8D%E5%B8%B8%E8%A7%81%E5%86%85%E5%AD%98%E9%97%AE%E9%A2%98/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>几种常见内存问题 | AshesBlog</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">AshesBlog</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">六畳一间的堂吉诃德</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://blog.lovinghlx.cn/v8/%E5%87%A0%E7%A7%8D%E5%B8%B8%E8%A7%81%E5%86%85%E5%AD%98%E9%97%AE%E9%A2%98/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/llyq.jpg">
+      <meta itemprop="name" content="SevenNorth">
+      <meta itemprop="description" content="野渡无人舟自横">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="AshesBlog">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          几种常见内存问题
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2022-04-20 06:59:37 / 修改时间：23:19:53" itemprop="dateCreated datePublished" datetime="2022-04-20T06:59:37+00:00">2022-04-20</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/v8/" itemprop="url" rel="index"><span itemprop="name">v8</span></a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="Node-中的-readFile-API-工作机制"><a href="#Node-中的-readFile-API-工作机制" class="headerlink" title="Node 中的 readFile API 工作机制"></a>Node 中的 readFile API 工作机制</h2><p>先通过两段代码来分析下同步和异步读文件 API 的区别。</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">var</span> fs = <span class="built_in">require</span>(<span class="string">&#x27;fs&#x27;</span>)</span><br><span class="line"><span class="keyword">var</span> data = fs.readFileSync(<span class="string">&#x27;test.js&#x27;</span>)</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">fileHanlder</span>(<span class="params">err, data</span>)</span>&#123;</span><br><span class="line">  data.toString()  </span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">fs.readFile(<span class="string">&#x27;test.txt&#x27;</span>, fileHanlder)</span><br></pre></td></tr></table></figure>
+
+<span id="more"></span>
+
+<p>Node 的体系架构可以参考下图：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220420071536.png" alt="node的体系架构"></p>
+<p>Node 是 V8 的宿主，它会给 V8 提供事件循环和消息队列。在 Node 中，事件循环是由 libuv 提供的，libuv 工作在主线程中，它会从消息队列中取出事件，并在主线程上执行事件。</p>
+<p>同样，对于一些主线程上不适合处理的事件，比如消耗时间过久的网络资源下载、文件读写、设备访问等，Node 会提供很多线程来处理这些事件，这些线程称为线程池。</p>
+<p>通常，在 Node 中，会认为读写文件是一个非常耗时的工作，因此主线程会将回调函数和读文件的操作一道发送给文件读写线程，并让实际的读写操作运行在读写线程中。</p>
+<p>比如当在 Node 的主线程上执行 readFile 的时候，主线程会将 readFile 的文件名称和回调函数，提交给文件读写线程来处理， 具体过程如下所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220420072217.png" alt="提交IO线程处理"></p>
+<p>文件读写线程完成文件读取之后， 会将结果和回调函数封装成新的事件，并将其添加进消息队列中。比如文件读写线程将读取的文件内容放到内存中，并将data指针指向该内存，然后文件读写线程会将data和回调函数封装成新的事件，并将其丢进消息队列中，具体过程如下所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220420072658.png" alt="封装新任务并添加到消息队列中"></p>
+<p>等到 libuv 从消息队列中读取该事件后，主线程就可以着手来处理该事件了。在主线程处理该事件的过程中，主线程调用事件中的回调函数，并将 data 结果数据作为参数，如下图所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220420072930.png" alt="取出事件并处理"></p>
+<p>然后在回调函数中，就可以拿到读取的结果来实现一些业务逻辑了。</p>
+<p>如果读取的文件体积不大或者项目瓶颈不在文件读写，那么依然使用异步调用和回调函数的模式就显得有点过度复杂了。</p>
+<p>因此 Node 还提供了一套同步读写的 API。第一段代码中的 readFileSync 就是同步实现的，同步代码非常简单，当 libuv 读取到 readFileSync 的任务后，就直接在主线程上执行读写操作，等待读写结束，直接返回读写的结果，这也是同步回调的一种应用。当然在读写过程中，消息队列中的其他任务是无法被执行的。</p>
+<p>所以在选择使用同步 API 还是异步 API 时，要看实际的场景，并不是非 A 即 B。几种内存问题</p>
+<h2 id="几种内存问题"><a href="#几种内存问题" class="headerlink" title="几种内存问题"></a>几种内存问题</h2><ul>
+<li>**内存泄漏 (Memory leak)**，它会导致页面的性能越来越差；</li>
+<li>**内存膨胀 (Memory bloat)**，它会导致页面的性能会一直很差；</li>
+<li><strong>频繁垃圾回收</strong>，它会导致页面出现延迟或者经常暂停。</li>
+</ul>
+<h3 id="内存泄漏"><a href="#内存泄漏" class="headerlink" title="内存泄漏"></a>内存泄漏</h3><p>本质上，内存泄漏可以定义为：当进程不再需要某些内存的时候，这些不再被需要的内存依然没有被进程回收。</p>
+<h4 id="不再需要的内存数据依然被其他对象引用着"><a href="#不再需要的内存数据依然被其他对象引用着" class="headerlink" title="不再需要的内存数据依然被其他对象引用着"></a>不再需要的内存数据依然被其他对象引用着</h4><p>在 JavaScript 中，造成内存泄漏 (Memory leak) 的主要原因是不再需要 (没有作用) 的内存数据依然被其他对象引用着。</p>
+<p>JavaScript 是一门非常宽松的语言，甚至可以使用一个未定义的变量，比如下面这样一段代码：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">foo</span>(<span class="params"></span>) </span>&#123;</span><br><span class="line">    <span class="comment">//创建一个临时的temp_array</span></span><br><span class="line">    temp_array = <span class="keyword">new</span> <span class="built_in">Array</span>(<span class="number">200000</span>)</span><br><span class="line">   <span class="comment">/**</span></span><br><span class="line"><span class="comment">    * 使用temp_array</span></span><br><span class="line"><span class="comment">    */</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>当执行这段代码时，由于函数体内的对象没有被 var、let、const 这些关键字声明，那么 V8 就会使用 this.temp_array 替换 temp_array。等同于下面这段代码</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">foo</span>(<span class="params"></span>) </span>&#123;</span><br><span class="line">    <span class="comment">//创建一个临时的temp_array</span></span><br><span class="line">    <span class="built_in">this</span>.temp_array = <span class="keyword">new</span> <span class="built_in">Array</span>(<span class="number">200000</span>)</span><br><span class="line">   <span class="comment">/**</span></span><br><span class="line"><span class="comment">    * this.temp_array</span></span><br><span class="line"><span class="comment">    */</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>在浏览器默认情况下，this 是指向 window 对象的，而 window 对象是常驻内存的，所以即便 foo 函数退出了，但是 temp_array 依然被 window 对象引用了， 所以 temp_array 依然也会和 window 对象一样，会常驻内存。因为 temp_array 已经是不再被使用的对象了，但是依然被 window 对象引用了，这就造成了 temp_array 的泄漏。</p>
+<p>为了解决这个问题，可以在 JavaScript 文件头部加上use strict，使用严格模式避免意外的全局变量，此时上例中的 this 指向 undefined。</p>
+<h4 id="闭包"><a href="#闭包" class="headerlink" title="闭包"></a>闭包</h4><p>还要时刻警惕闭包这种情况，因为闭包会引用父级函数中定义的变量，如果引用了不被需要的变量，那么也会造成内存泄漏。比如你可以看下面这样一段代码：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">foo</span>(<span class="params"></span>)</span>&#123;  </span><br><span class="line">    <span class="keyword">var</span> temp_object = <span class="keyword">new</span> <span class="built_in">Object</span>()</span><br><span class="line">    temp_object.x = <span class="number">1</span></span><br><span class="line">    temp_object.y = <span class="number">2</span></span><br><span class="line">    temp_object.array = <span class="keyword">new</span> <span class="built_in">Array</span>(<span class="number">200000</span>)</span><br><span class="line">    <span class="comment">/**</span></span><br><span class="line"><span class="comment">    *   使用temp_object</span></span><br><span class="line"><span class="comment">    */</span></span><br><span class="line">    <span class="keyword">return</span> <span class="function"><span class="keyword">function</span>(<span class="params"></span>)</span>&#123;</span><br><span class="line">        <span class="built_in">console</span>.log(temp_object.x);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>可以看到，foo 函数使用了一个局部临时变量 temp_object，temp_object 对象有三个属性，x、y，还有一个非常占用内存的 array 属性。最后 foo 函数返回了一个匿名函数，该匿名函数引用了 temp_object.x。那么当调用完 foo 函数之后，由于返回的匿名函数引用了 foo 函数中的 temp_object.x，这会造成 temp_object 无法被销毁，即便只是引用了 temp_object.x，也会造成整个 temp_object 对象依然保留在内存中。我们可以通过 Chrome 调试工具查看下：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220421062912.png" alt="闭包造成内存泄漏"></p>
+<p>从上图可以看出，虽然仅仅是需要 temp_object.x 的值，V8 却保留了整个 temp_object 对象。</p>
+<p>要解决这个问题，就需要根据实际情况，来判断闭包中返回的函数到底需要引用什么数据，不需要引用的数据就绝不引用，因为上面例子中，返回函数中只需要 temp_object.x 的值，因此可以这样改造下这段代码：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">foo</span>(<span class="params"></span>)</span>&#123;  </span><br><span class="line">    <span class="keyword">var</span> temp_object = <span class="keyword">new</span> <span class="built_in">Object</span>()</span><br><span class="line">    temp_object.x = <span class="number">1</span></span><br><span class="line">    temp_object.y = <span class="number">2</span></span><br><span class="line">    temp_object.array = <span class="keyword">new</span> <span class="built_in">Array</span>(<span class="number">200000</span>)</span><br><span class="line">    <span class="comment">/**</span></span><br><span class="line"><span class="comment">    *   使用temp_object</span></span><br><span class="line"><span class="comment">    */</span></span><br><span class="line">   <span class="keyword">let</span> closure = temp_object.x</span><br><span class="line">    <span class="keyword">return</span> <span class="function"><span class="keyword">function</span>(<span class="params"></span>)</span>&#123;</span><br><span class="line">        <span class="built_in">console</span>.log(closure);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>当再次执行这段代码时，就可以看到闭包引用的仅仅是一个 closure 的变量，最终如下图所示：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220421063226.png" alt="改造后闭包内存使用情况"></p>
+<h4 id="引用了-DOM-节点而造成的内存泄漏的问题"><a href="#引用了-DOM-节点而造成的内存泄漏的问题" class="headerlink" title="引用了 DOM 节点而造成的内存泄漏的问题"></a>引用了 DOM 节点而造成的内存泄漏的问题</h4><p>再来看看由于 JavaScript 引用了 DOM 节点而造成的内存泄漏的问题，只有同时满足 DOM 树和 JavaScript 代码都不引用某个 DOM 节点，该节点才会被作为垃圾进行回收。 如果某个节点已从 DOM 树移除，但 JavaScript 仍然引用它，称此节点为“<strong>detached</strong> ”。“<strong>detached</strong> ”节点是 DOM 内存泄漏的常见原因。比如下面这段代码：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">let</span> detachedTree;</span><br><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">create</span>(<span class="params"></span>) </span>&#123;</span><br><span class="line">  <span class="keyword">var</span> ul = <span class="built_in">document</span>.createElement(<span class="string">&#x27;ul&#x27;</span>);</span><br><span class="line">  <span class="keyword">for</span> (<span class="keyword">var</span> i = <span class="number">0</span>; i &lt; <span class="number">100</span>; i++) &#123;</span><br><span class="line">    <span class="keyword">var</span> li = <span class="built_in">document</span>.createElement(<span class="string">&#x27;li&#x27;</span>);</span><br><span class="line">    ul.appendChild(li);</span><br><span class="line">  &#125;</span><br><span class="line">  detachedTree = ul;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">create() </span><br></pre></td></tr></table></figure>
+
+<p>上面的代码通过 JavaScript 创建了一些 DOM 元素，有了这些内存中的 DOM 元素，当有需要的时候，就可以快速地将这些 DOM 元素关联到 DOM 树上，一旦这些 DOM 元素从 DOM 上被移除后，它们并不会立即销毁，这主要是由于 JavaScript 代码中保留了这些元素的引用，导致这些 DOM 元素依然会呆在内存中。所以在保存 DOM 元素引用的时候，需要注意。</p>
+<h3 id="内存膨胀"><a href="#内存膨胀" class="headerlink" title="内存膨胀"></a>内存膨胀</h3><p>内存膨胀和内存泄漏有一些差异，内存膨胀主要表现在程序员对内存管理的不科学，比如只需要 50M 内存就可以搞定的，有些程序员却花费了 500M 内存。</p>
+<p>额外使用过多的内存有可能是没有充分地利用好缓存，也有可能加载了一些不必要的资源。通常表现为内存在某一段时间内快速增长，然后达到一个平稳的峰值继续运行。</p>
+<p>比如一次性加载了大量的资源，内存会快速达到一个峰值。内存膨胀和内存泄漏的关系你可以参看下图：</p>
+<p><img src="https://raw.githubusercontent.com/SevenNorth/picGo/master/images/20220421070218.png" alt="内存膨胀与内存泄漏的时间图"></p>
+<p>内存膨胀是快速增长，然后达到一个平衡的位置，而内存泄漏是内存一直在缓慢增长。要避免内存膨胀，需要合理规划项目，充分利用缓存等技术来减轻项目中不必要的内存占用。</p>
+<h3 id="频繁的垃圾回收"><a href="#频繁的垃圾回收" class="headerlink" title="频繁的垃圾回收"></a>频繁的垃圾回收</h3><p>频繁使用大的临时变量，导致了新生代空间很快被装满，从而频繁触发垃圾回收。频繁的垃圾回收操作会让你感觉到页面卡顿。比如下面这段代码：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">strToArray</span>(<span class="params">str</span>) </span>&#123;</span><br><span class="line">  <span class="keyword">let</span> i = <span class="number">0</span></span><br><span class="line">  <span class="keyword">const</span> len = str.length</span><br><span class="line">  <span class="keyword">let</span> arr = <span class="keyword">new</span> <span class="built_in">Uint16Array</span>(str.length)</span><br><span class="line">  <span class="keyword">for</span> (; i &lt; len; ++i) &#123;</span><br><span class="line">    arr[i] = str.charCodeAt(i)</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">return</span> arr;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">foo</span>(<span class="params"></span>) </span>&#123;</span><br><span class="line">  <span class="keyword">let</span> i = <span class="number">0</span></span><br><span class="line">  <span class="keyword">let</span> str = <span class="string">&#x27;test V8 GC&#x27;</span></span><br><span class="line">  <span class="keyword">while</span> (i++ &lt; <span class="number">1e5</span>) &#123;</span><br><span class="line">    strToArray(str);</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">foo()</span><br></pre></td></tr></table></figure>
+
+<p>这段代码就会频繁创建临时变量，这种方式很快就会造成新生代内存内装满，从而频繁触发垃圾回收。</p>
+<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>Node 为读写文件提供了两套 API，一套是默认的异步 API，另外一套是同步 API。</p>
+<p>readFile 就是异步 API，主线程在执行 readFile 的时候，会将实际读写操作丢给文件读写线程，文件读写线程处理完成之后，会将回调函数读取的结果封装成新的消息，添加到消息队列中，然后等主线执行该消息的时候，就会执行 readFile 设置的回调函数，这就是 Node 中的异步处理过程。readFileSync 是同步 API，同步 API 很简单，直接在主线程上执行，执行完成直接返回结果给它的调用函数。使用同步 API 会比较方便简单，但是需要考虑项目能否接受读取文件而造成的暂停。</p>
+<p>内存问题对于前端开发者来说也是至关重要的，通常有三种内存问题：内存泄漏 (Memory leak)、内存膨胀 (Memory bloat)、频繁垃圾回收。</p>
+<p>在 JavaScript 中，造成内存泄漏 (Memory leak) 的主要原因，是不再需要 (没有作用) 的内存数据依然被其他对象引用着。所以要避免内存泄漏，需要避免引用那些已经没有用途的数据。</p>
+<p>内存膨胀和内存泄漏有一些差异，内存膨胀主要是由于程序员对内存管理不科学导致的，比如只需要 50M 内存就可以搞定的，有些程序员却花费了 500M 内存。要解决内存膨胀问题，需要对项目有着透彻的理解，也要熟悉各种能减少内存占用的技术方案。</p>
+<p>如果频繁使用大的临时变量，那么就会导致频繁垃圾回收，频繁的垃圾回收操作会让人感觉到页面卡顿，要解决这个问题，我们可以考虑将这些临时变量设置为全局变量。</p>
+
+    </div>
+
+    
+    
+    
+    
+    <div>
+      <div>
+    
+    <div style="text-align:center;color:#bfbfbf;font-size:16px;">
+        <span>-------- 本文结束 </span>
+        <i class="fa fa-heartbeat"></i>
+        <span> 感谢阅读 --------</span>
+    </div>
+    
+</div>
+    </div>
+    
+        <!-- JS库 clipboard 拷贝内容到粘贴板-->
+<script src="https://cdn.bootcss.com/clipboard.js/2.0.1/clipboard.min.js"></script>
+
+<!-- JS库 sweetalert 显示提示信息-->
+<script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
+
+<ul class="post-copyright">
+  <!-- 本文标题 -->
+  <li>
+    <strong>本文标题： </strong>
+    几种常见内存问题
+  </li>
+
+  <!-- 本文作者 -->
+  <li class="post-copyright-author">
+    <strong>本文作者： </strong>
+    SevenNorth
+  </li>
+
+  <!-- 创建时间 -->
+  <li>
+    <strong>创建时间： </strong>
+    2022年04月20日 - 06时04分
+  </li>
+
+  <!-- 修改时间 -->
+  <li>
+    <strong>修改时间： </strong>
+    2022年04月20日 - 23时04分
+  </li>
+
+  <!-- 引用链接 -->
+  <li class="post-copyright-link">
+    <strong>本文链接：</strong>
+    <a href="http://blog.lovinghlx.cn/v8/%E5%87%A0%E7%A7%8D%E5%B8%B8%E8%A7%81%E5%86%85%E5%AD%98%E9%97%AE%E9%A2%98/" title="几种常见内存问题"
+      >http://blog.lovinghlx.cn/v8/%E5%87%A0%E7%A7%8D%E5%B8%B8%E8%A7%81%E5%86%85%E5%AD%98%E9%97%AE%E9%A2%98/</a
+    >
+    <span class="copy-path" title="点击复制引用链接"
+      ><i
+        style="cursor: pointer"
+        class="fa fa-clipboard"
+        data-clipboard-text="[SevenNorth's Blog | 几种常见内存问题](http://blog.lovinghlx.cn/v8/%E5%87%A0%E7%A7%8D%E5%B8%B8%E8%A7%81%E5%86%85%E5%AD%98%E9%97%AE%E9%A2%98/)"
+        aria-label="链接复制成功"
+      ></i
+    ></span>
+  </li>
+
+  <!-- 版权声明 -->
+  <li class="post-copyright-license">
+    <strong
+      >版权声明：
+    </strong>
+    本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" rel="external nofollow" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明出处！
+  </li>
+</ul>
+
+<script>
+  var clipboard = new ClipboardJS(".fa-clipboard");
+  clipboard.on("success", function(target) {
+    var message = document.createElement("div");
+    message.innerHTML =
+      '<i class="fa fa-check-circle message-icon"></i><span class="message-content">' +
+      target.trigger.getAttribute("aria-label") +
+      "</span>";
+    swal({
+      content: message,
+      className: "copy-success-message",
+      timer: 1000,
+      button: false
+    });
+  });
+</script>
+
+      <footer class="post-footer">
+          
+          <div class="post-tags">
+              <a href="/tags/v8/" rel="tag"><i class="fa fa-tag"></i> v8</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/v8/V8%E6%98%AF%E5%A6%82%E4%BD%95%E4%BC%98%E5%8C%96%E5%9E%83%E5%9C%BE%E5%9B%9E%E6%94%B6%E5%99%A8%E6%89%A7%E8%A1%8C%E6%95%88%E7%8E%87%E7%9A%84%EF%BC%9F/" rel="prev" title="V8是如何优化垃圾回收器执行效率的？">
+      <i class="fa fa-chevron-left"></i> V8是如何优化垃圾回收器执行效率的？
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#Node-%E4%B8%AD%E7%9A%84-readFile-API-%E5%B7%A5%E4%BD%9C%E6%9C%BA%E5%88%B6"><span class="nav-number">1.</span> <span class="nav-text">Node 中的 readFile API 工作机制</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%87%A0%E7%A7%8D%E5%86%85%E5%AD%98%E9%97%AE%E9%A2%98"><span class="nav-number">2.</span> <span class="nav-text">几种内存问题</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%86%85%E5%AD%98%E6%B3%84%E6%BC%8F"><span class="nav-number">2.1.</span> <span class="nav-text">内存泄漏</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E4%B8%8D%E5%86%8D%E9%9C%80%E8%A6%81%E7%9A%84%E5%86%85%E5%AD%98%E6%95%B0%E6%8D%AE%E4%BE%9D%E7%84%B6%E8%A2%AB%E5%85%B6%E4%BB%96%E5%AF%B9%E8%B1%A1%E5%BC%95%E7%94%A8%E7%9D%80"><span class="nav-number">2.1.1.</span> <span class="nav-text">不再需要的内存数据依然被其他对象引用着</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E9%97%AD%E5%8C%85"><span class="nav-number">2.1.2.</span> <span class="nav-text">闭包</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%BC%95%E7%94%A8%E4%BA%86-DOM-%E8%8A%82%E7%82%B9%E8%80%8C%E9%80%A0%E6%88%90%E7%9A%84%E5%86%85%E5%AD%98%E6%B3%84%E6%BC%8F%E7%9A%84%E9%97%AE%E9%A2%98"><span class="nav-number">2.1.3.</span> <span class="nav-text">引用了 DOM 节点而造成的内存泄漏的问题</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%86%85%E5%AD%98%E8%86%A8%E8%83%80"><span class="nav-number">2.2.</span> <span class="nav-text">内存膨胀</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%A2%91%E7%B9%81%E7%9A%84%E5%9E%83%E5%9C%BE%E5%9B%9E%E6%94%B6"><span class="nav-number">2.3.</span> <span class="nav-text">频繁的垃圾回收</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%80%BB%E7%BB%93"><span class="nav-number">3.</span> <span class="nav-text">总结</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+    <a href="/">
+      <img class="site-author-image" itemprop="image" alt="SevenNorth"
+        src="/images/llyq.jpg">
+    </a>
+  <p class="site-author-name" itemprop="name">SevenNorth</p>
+  <div class="site-description" itemprop="description">野渡无人舟自横</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">8</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">4</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://github.com/SevenNorth" title="GitHub → https:&#x2F;&#x2F;github.com&#x2F;SevenNorth" rel="noopener" target="_blank"><i class="fab fa-github fa-fw"></i>GitHub</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2022</span>
+  <span class="with-love">
+    <i class="fa fa-heartbeat"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">SevenNorth</span>
+</div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/pisces.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+  
+
+    <script async src="/js/cursor/fireworks.js"></script>
+
+</body>
+</html>

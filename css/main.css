@@ -1175,7 +1175,7 @@ pre .javascript .function {
 }
 .links-of-author a::before,
 .links-of-author span.exturl::before {
-  background: #254f13;
+  background: #5da7ff;
   border-radius: 50%;
   content: ' ';
   display: inline-block;
@@ -1497,6 +1497,7 @@ pre .javascript .function {
   bottom: unset;
   transition: all 0.5s ease-in-out;
   background-image: url("/images/scroll.png");
+  z-index: 1;
   position: fixed;
   cursor: pointer;
 }
