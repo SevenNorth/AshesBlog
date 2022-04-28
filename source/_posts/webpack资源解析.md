@@ -110,3 +110,63 @@ module.exports = {
   },
 },
 ```
+
+## 资源解析： 解析图片与字体
+
+file-loader 用于处理文件
+
+```js
+const path = require('path');
+module.exports = {
+  entry: './src/index.js',
+  output: {
+    filename: 'bundle.js',
+    path: path.resolve(__dirname, 'dist'),
+  },
+  module: {
+    rules: [
+      {
+        test: /\.(png|svg|jpg|gif)$/,
+        use: [
+          'file-loader'
+        ],
+      },
+      {
+        test: /\.(woff|woff2|eot|ttf|otf)$/,
+        use: [
+          'file-loader'
+        ],
+      },
+    ],
+  },
+},
+```
+
+url-loader 也可以处理图片和字体
+可以设置较小资源自动base64
+
+```js
+const path = require('path');
+module.exports = {
+  entry: './src/index.js',
+  output: {
+    filename: 'bundle.js',
+    path: path.resolve(__dirname, 'dist'),
+  },
+  module: {
+    rules: [
+      {
+        test: /\.(png|svg|jpg|gif)$/,
+        use: [
+          {
+            loader: 'url-loader',
+            options: {
+              limit: 10240 // 单位byte
+            }
+          }
+        ],
+      },
+    ],
+  },
+},
+```
