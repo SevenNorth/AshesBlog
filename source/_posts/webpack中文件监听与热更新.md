@@ -69,3 +69,4 @@ Bundle Server: 提供文件在浏览器的访问
 HMR Runtime: 会被注入到浏览器，更新文件的变化。与服务器建立连接，通常是websocket
 Bundle.js: 构建输出的文件
 
+![热更新原理](https://raw.githubusercontent.com/SevenNorth/picGo/master/images/%E7%83%AD%E6%9B%B4%E6%96%B0%E5%8E%9F%E7%90%86.png)
