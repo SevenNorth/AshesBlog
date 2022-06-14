@@ -1,0 +1,36 @@
+name: deploy to tencent
+on: 
+  push:
+    branches:
+      - master
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # 切换分支
+      - name: Checkout
+        uses: actions/checkout@v2.4.2
+      - name: use Node.js 14
+        uses: actions/setup-node@v3.1.1
+        with:
+          node-version: 14.x
+      # npm install
+      - name: npm install
+        run: npm install
+        env:
+          CI: true
+      # npm run build
+      - name: npm build
+        run: npm run build
+        env:
+          CI: true
+      # Deploy
+      - name: Deploy to Server
+        uses: easingthemes/ssh-deploy@v2.1.2
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          ARGS: '-rltgoDzvO --delete'
+          SOURCE: 'public/'
+          REMOTE_HOST: ${{ secrets.REMOTE_HOST }}
+          REMOTE_USER: ${{ secrets.REMOTE_USER }}
+          TARGET: ${{ secrets.REMOTE_TARGET }}
