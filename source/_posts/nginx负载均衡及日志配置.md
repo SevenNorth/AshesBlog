@@ -416,3 +416,44 @@ HTTP响应代码 (1.3.2, 1.2.2)
 - $uri
 
 请求中的当前URI(不带请求参数，参数位于$args)，可以不同于浏览器传递的$request_uri的值，它可以通过内部重定向，或者使用index指令进行修改，$uri不包含主机名，如”/foo/bar.html”。
+
+## 反向代理设置协议头
+
+在使用nginx给Arcgis Server做反向代理的负载均衡的时候，有时候并不会拿到切片或者加载服务。这个时候就需要给代理的location设置相关的协议头。
+`proxy_set_header` 即允许重新定义或添加字段传递给代理服务器的请求头。该值可以包含文本、变量和它们的组合。简而言之，`proxy_set_header` 就是可设置请求头-并将头信息传递到服务器端，不属于请求头的参数中也需要传递时，重定义下即可。
+
+```conf
+upstream balance {
+    server localhost:8080;
+    server localhost:8081;
+    server localhost:8082;
+    server localhost:8083;
+}
+server {
+   listen       80;
+   server_name  localhost;
+   location / {
+      proxy_pass http://balance;
+      proxy_redirect off;
+      proxy_set_header   Host             $host;
+      proxy_set_header   X-Real-IP        $remote_addr;
+      proxy_set_header   X-Forwarded-For  $proxy_add_x_forwarded_for;
+      proxy_next_upstream error timeout invalid_header http_500 http_504 http_404;
+   }
+}
+```
+简单的解释下：
+   - X-Forwarded-For 表示 Nginx 接收到的头，原样的转发过来（假如不转发，Web 服务器就不能获取这个头）。
+   - X-Real-IP，这是一个内部协议头（就是反向代理服务器和 Web 服务器约定的），这个头表示连接反向代理服务器的 IP 地址（这个地址不能伪造）。
+
+更多头可以根据后端需要进行配置。如成都CIM项目使用成都时空云的地名地址搜索服务的时候，需要`previewTicket`, 就在代理的时候固定传了一个值。
+
+```conf
+location /proxy-geo/ {
+   proxy_set_header Referer 'https://www.chengdumap.cn/';
+   proxy_set_header previewTicket 'abcdefghijklmnopqrstuvwxyz';
+   proxy_set_header Origin 'https://www.chengdumap.cn';
+   proxy_set_header Host  'www.chengdumap.cn';
+   proxy_pass http://172.34.56.251:90/proxy-geo/;
+}
+```
