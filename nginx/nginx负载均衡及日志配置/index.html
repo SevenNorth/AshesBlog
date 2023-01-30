@@ -24,7 +24,7 @@
 <meta property="og:type" content="article">
 <meta property="og:title" content="nginx负载均衡及日志配置">
 <meta property="og:url" content="http://blog.lovinghlx.cn/nginx/nginx%E8%B4%9F%E8%BD%BD%E5%9D%87%E8%A1%A1%E5%8F%8A%E6%97%A5%E5%BF%97%E9%85%8D%E7%BD%AE/">
-<meta property="og:site_name" content="AshesBlog">
+<meta property="og:site_name" content="WebSalon">
 <meta property="og:description" content="nginx负载均衡什么是负载均衡负载均衡（Load Balance），它在网络现有结构之上可以提供一种廉价、有效、透明的方法来扩展网络设备和服务器的带宽，并可以在一定程度上增加吞吐量、加强网络数据处理能力、提高网络的灵活性和可用性等。用官网的话说，它充当着网络流中“交通指挥官”的角色，“站在”服务器前处理所有服务器端和客户端之间的请求，从而最大程度地提高响应速率和容量利用率，同时确保任何服务器都没">
 <meta property="og:locale" content="zh_CN">
 <meta property="og:image" content="http://sevennorth.lovinghlx.cn/imgbed/20220630202026.png">
@@ -33,7 +33,7 @@
 <meta property="og:image" content="http://sevennorth.lovinghlx.cn/imgbed/20220630215144.png">
 <meta property="og:image" content="http://sevennorth.lovinghlx.cn/imgbed/balance.gif">
 <meta property="article:published_time" content="2022-07-05T06:25:06.000Z">
-<meta property="article:modified_time" content="2022-07-07T02:43:12.468Z">
+<meta property="article:modified_time" content="2023-01-30T06:53:39.721Z">
 <meta property="article:author" content="SevenNorth">
 <meta property="article:tag" content="nginx">
 <meta name="twitter:card" content="summary">
@@ -52,7 +52,7 @@
   };
 </script>
 
-  <title>nginx负载均衡及日志配置 | AshesBlog</title>
+  <title>nginx负载均衡及日志配置 | WebSalon</title>
   
 
 
@@ -102,7 +102,7 @@
 
     <a href="/" class="brand" rel="start">
       <span class="logo-line-before"><i></i></span>
-      <h1 class="site-title">AshesBlog</h1>
+      <h1 class="site-title">WebSalon</h1>
       <span class="logo-line-after"><i></i></span>
     </a>
       <p class="site-subtitle" itemprop="description">六畳一间的堂吉诃德</p>
@@ -181,7 +181,7 @@
     </span>
 
     <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="AshesBlog">
+      <meta itemprop="name" content="WebSalon">
     </span>
       <header class="post-header">
         <h1 class="post-title" itemprop="name headline">
@@ -202,7 +202,7 @@
                   <i class="far fa-calendar-check"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2022-07-07 02:43:12" itemprop="dateModified" datetime="2022-07-07T02:43:12+00:00">2022-07-07</time>
+                <time title="修改时间：2023-01-30 06:53:39" itemprop="dateModified" datetime="2023-01-30T06:53:39+00:00">2023-01-30</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -571,7 +571,7 @@
   <!-- 修改时间 -->
   <li>
     <strong>修改时间： </strong>
-    2022年07月07日 - 02时07分
+    2023年01月30日 - 06时01分
   </li>
 
   <!-- 引用链接 -->
@@ -631,7 +631,10 @@
     <a href="/webpack/%E4%BB%A3%E7%A0%81%E5%8E%8B%E7%BC%A9/" rel="prev" title="代码压缩">
       <i class="fa fa-chevron-left"></i> 代码压缩
     </a></div>
-      <div class="post-nav-item"></div>
+      <div class="post-nav-item">
+    <a href="/game/%E4%BD%BF%E7%94%A8PixiJS%E5%81%9A%E4%B8%80%E4%B8%AA%E5%B0%8F%E6%B8%B8%E6%88%8F-1/" rel="next" title="三天时间用PixiJS做一个小游戏(1)">
+      三天时间用PixiJS做一个小游戏(1) <i class="fa fa-chevron-right"></i>
+    </a></div>
     </div>
       </footer>
     
@@ -708,20 +711,20 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">14</span>
+          <span class="site-state-item-count">15</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
       <div class="site-state-item site-state-categories">
             <a href="/categories/">
           
-        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-count">6</span>
         <span class="site-state-item-name">分类</span></a>
       </div>
       <div class="site-state-item site-state-tags">
             <a href="/tags/">
           
-        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-count">5</span>
         <span class="site-state-item-name">标签</span></a>
       </div>
   </nav>
@@ -753,7 +756,7 @@
 <div class="copyright">
   
   &copy; 
-  <span itemprop="copyrightYear">2022</span>
+  <span itemprop="copyrightYear">2023</span>
   <span class="with-love">
     <i class="fa fa-heartbeat"></i>
   </span>
