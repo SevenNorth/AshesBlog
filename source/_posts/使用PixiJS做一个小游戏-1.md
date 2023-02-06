@@ -31,3 +31,38 @@ date: 2023-01-30 11:20:02
     ```
 
 ## 开发环境搭建
+  由于个人原因想复习一下webpack配置，所以使用了第二种方式：webpack + ts。
+  搭建过程参考掘金的[【前端工程化】webpack5从零搭建完整的react18+ts开发和打包环境](https://juejin.cn/post/7111922283681153038)，移除了react部分相关的依赖和配置；顺便搞了代码及样式格式，参考[【前端工程化】配置React+ts项目完整的代码及样式格式和git提交规范](https://juejin.cn/post/7101596844181962788)，没有搞 `husky`及git提交规范。
+  提前处理一个样式问题，由于`canvas`标签的默认的display属性是'inline-block'，即便是设置为宽高都是100%，也会在页面出现滚动条，所以需要我们把它设置为'block'。跟着第一篇文章搭建使用了`purgecss-webpack-plugin`来清理未使用的css样式，会在生产环境构建时把在在less文件中写的canvas相关的样式给移除掉(pixi绘制所需的`canvas`标签是通过Pixi相关方法创建的，然后append挂在到document的相应节点，所以在构建的时候，不会有canvas标签存在)，所以需要给PurgeCSSPlugin配置safelist属性。
+  ```javascript
+  // ...
+  new PurgeCSSPlugin({
+      // ...
+      safelist: {
+        standard: ['canvas'], // 过滤以canvas标签，哪怕没用到也不删除
+      },
+    }),
+  // ...
+  ```
+
+---------------------
+
+## 创建Pixi应用
+使用Pixi的Application对象创建一个矩形显示区域。Application是一个辅助类，可以简化 PixiJS 的使用。它创建了渲染器，舞台，并启动用于更新的ticker。目前，Application类是开始使用PixiJS而无需担心细节的完美方式。它会自动生成一个`canvas`元素，然后在canvas画布上显示图像。需要手动将这个`canvas`元素挂载到document的对应节点。
+  ```typescript
+  import { Application } from 'pixi.js';
+
+  const root = document.getElementById('root');
+  const width = root?.clientWidth ?? 1600,
+    height = root?.clientHeight ?? 800;
+  const app = new Application({
+    width,
+    height,
+    background: '#1099bb',
+    antialias: true,
+    resolution: 1,
+  });
+  root?.appendChild(app.view as unknown as Document);
+  ```
+  这样，我们就能看到一整块蓝色的canvas背景了。
+
