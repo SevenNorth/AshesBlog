@@ -66,3 +66,25 @@ date: 2023-01-30 11:20:02
   ```
   这样，我们就能看到一整块蓝色的canvas背景了。
 
+## 创建可操控的精灵
+舞台已搭好，演员请就位~
+任何想要在渲染器中可见的东西都必须添加到一个特殊的 `Pixi` 对象中，这个对象叫做stage(舞台)，就是上面的 `app.stage`。
+
+stage(舞台)是Pixi的Container(容器)对象。可以把一个Container(容器)想象成一种空盒子，它会把放进去的东西组合在一起并储存起来。stage(舞台)对象是<font color='#f00'>场景中所有可见事物的根容器</font>。在stage(舞台)里放的任何东西都可以在canvas画面上渲染出来。(重要:因为stage(舞台)是一个PixiContainer(容器)，所以它具有与任何其他Container(容器)对象相同的属性和方法。但是，尽管stage(舞台)具有width和height属性，它们并不涉及呈现窗口的大小。舞台的有width和height属性只是告诉你它的面积!)。
+
+Sprite是PixiJS中最简单和最常见的可渲染对象。它们代表要在屏幕上显示的单个图像。每个Sprite都包含一个要绘制的[纹理](https://pixijs.download/release/docs/PIXI.Texture.html)，以及在场景图中运行所需的所有变换和显示状态。可以控制它们的位置、大小和其他属性。通过制作和控制Sprite，来实现对游戏角色的操控。
+
+创建Sprite可以通过两种方式:
+1. 直接从图片创建
+   ```typescript
+    import { Sprite } from 'pixi.js';
+    const sprite = Sprite.from('images/anySpriteImage.png');
+   ```
+2. 先加载到纹理缓存，再创建精灵
+   ```typescript
+    import { Assets, Sprite } from 'pixi.js';
+
+    await Assets.load('images/anySpriteImage.png');
+    const texture = PIXI.utils.TextureCache["images/anySpriteImage.png"];
+    const sprite = new PIXI.Sprite(texture);
+   ```
