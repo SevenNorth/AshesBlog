@@ -66,7 +66,7 @@ date: 2023-01-30 11:20:02
   ```
   这样，我们就能看到一整块蓝色的canvas背景了。
 
-## 创建可操控的精灵
+## 创建并显示Sprite
 舞台已搭好，演员请就位~
 任何想要在渲染器中可见的东西都必须添加到一个特殊的 `Pixi` 对象中，这个对象叫做stage(舞台)，就是上面的 `app.stage`。
 
@@ -74,17 +74,140 @@ stage(舞台)是Pixi的Container(容器)对象。可以把一个Container(容器
 
 Sprite是PixiJS中最简单和最常见的可渲染对象。它们代表要在屏幕上显示的单个图像。每个Sprite都包含一个要绘制的[纹理](https://pixijs.download/release/docs/PIXI.Texture.html)，以及在场景图中运行所需的所有变换和显示状态。可以控制它们的位置、大小和其他属性。通过制作和控制Sprite，来实现对游戏角色的操控。
 
-创建Sprite可以通过两种方式:
-1. 直接从图片创建
-   ```typescript
-    import { Sprite } from 'pixi.js';
-    const sprite = Sprite.from('images/anySpriteImage.png');
-   ```
-2. 先加载到纹理缓存，再创建精灵
-   ```typescript
-    import { Assets, Sprite } from 'pixi.js';
+- 创建Sprite可以通过两种方式:
+  1. 直接从图片创建
+     ```typescript
+      import { Sprite } from 'pixi.js';
+      const sprite = Sprite.from('images/anySpriteImage.png');
+     ```
+  2. 先加载到纹理缓存，再创建精灵
+     ```typescript
+      import { Assets, Sprite } from 'pixi.js';
 
-    await Assets.load('images/anySpriteImage.png');
-    const texture = PIXI.utils.TextureCache["images/anySpriteImage.png"];
-    const sprite = new PIXI.Sprite(texture);
-   ```
+      await Assets.load('images/anySpriteImage.png');
+      const texture = PIXI.utils.TextureCache["images/anySpriteImage.png"];
+      const sprite = new PIXI.Sprite(texture);
+     ```
+  3. 通过雪碧图创建
+     可以通过定义与要提取的子图像大小和位置相同的矩形区域来从雪碧图捕获子图像。
+
+
+- 显示sprite
+  显示sprite只需要一句代码：
+  ```typescript
+  app.stage.addChild(sprite);
+  ```
+  当然，也可以把创建的sprite添加到其他的容器当中。
+- 设置sprite的位置
+  设置sprite的`x`，`y`属性可以调整sprite在舞台中的位置
+  ```typescript
+  sprite.x = 96;
+  sprite.y = 96;
+  ```
+  sprite的定位锚点是它自身的左上角， 当然定位锚点(anchor)可以通过以下方式进行设置。但是，建议所有的sprite的锚点都保持一致，便于后续计算碰撞。
+  ```typescript
+  // The default is (0,0), this means the sprite's origin is the top left.
+  // Setting the anchor to (0.5,0.5) means the sprite's origin is centered.
+  // Setting the anchor to (1,1) would mean the sprite's origin point will be the bottom right corner.
+  // This will set the origin to center. (0.5) is same as (0.5, 0.5).
+  sprite.anchor.set(0.5); 
+  ```
+  pixi中采用与css定位系统类似的屏幕坐标系，见下图：
+  ![坐标系](http://sevennorth.lovinghlx.cn/imgbed/坐标系.png)
+
+
+## 移动Sprite
+
+移动Sprite的本质是动态的修改spirte的坐标属性(即x,y)。
+创建的`app`会带有一个`ticker`对象，Ticker类可以自行查阅文档，我也是麻的。简单的说Ticker类就是一个运行更新循环的类，可以通过`add`方法注册需要执行的函数，直到这个函数被移除或者`ticker`停止。通过`add`添加到`ticker`的函数，每秒都会被执行60次(默认,可以配置)。
+另外，如果不使用ticker来进行循环，也可以使用`requestAnimationFrame`方法来实现游戏循环。
+```typescript
+function gameLoop(delta){
+  sprite.x += 1;
+}
+app.ticker.add(delta => gameLoop(delta));
+```
+这样，就可以看到sprite逐渐移动到舞台右侧。
+
+但是，这样并不利于有效的实现控制sprite的移动。
+我这里是创建了一个Player的类，包含了x,y,vx,vy,speed,sprite等属性，后续考虑使用dx,dy代替vx,vy,用`1`和`-1`来表示方向,方向×速度就是这一帧的sprite的偏移量。在构造函数中调用相关方法创建Pixi的Sprite对象，并将其挂到sprite属性。
+
+定义一个`keyboard`函数，用于监听并捕获事件。
+```javascript
+ function keyboard(keyCode) {
+  let key = {};
+  key.code = keyCode;
+  key.isDown = false;
+  key.isUp = true;
+  key.press = undefined;
+  key.release = undefined;
+  // 按下按键时的处理程序
+  key.downHandler = event => {
+    if (event.keyCode === key.code) {
+      if (key.isUp && key.press) key.press();
+      key.isDown = true;
+      key.isUp = false;
+    }
+    event.preventDefault();
+  };
+  // 按键被松开时的处理程序
+  key.upHandler = event => {
+    if (event.keyCode === key.code) {
+      if (key.isDown && key.release) key.release();
+      key.isDown = false;
+      key.isUp = true;
+    }
+    event.preventDefault();
+  };
+  // 添加事件监听器
+  window.addEventListener('keydown', key.downHandler.bind(key), false);
+  window.addEventListener('keyup', key.upHandler.bind(key), false);
+  // 返回key对象
+  return key;
+}
+```
+
+创建key对象并绑定相应事件
+```typescript
+bindKeyEvent() {
+   const left = keyboard(37);
+   //左箭头键 按下
+    left.press = () => {
+      this.vx = -this.speed;
+      this.vy = 0;
+    };
+    //左箭头键 释放
+    left.release = () => {
+      if (!this.gameState.playing) return;
+      //如果左箭头已被释放，右箭头未按下，并且精灵没有垂直移动，则将 vx 设置为0来停止精灵移动。
+      if (!right.isDown && this.vy === 0) {
+        this.vx = 0;
+      }
+    };
+    // ...
+}
+```
+`bindKeyEvent`事件会在Player类实例化时进行调用，其他几个键的处理类似。
+Player类中，我增加了一个move方法，用于更新sprite坐标，进行移动。
+```typescript
+move() {
+  if (this.sprite) {
+    let next_X = this.x + (this.vx ?? 0);
+    let next_y = this.y + (this.vy ?? 0);
+    this.x = next_X;
+    this.y = next_y;
+    this.sprite.x = next_X;
+    this.sprite.y = next_y;
+  }
+}
+```
+现在，就可以我们操sprite在舞台上运动起来了
+```typescript
+const person = new Player({
+  // ...
+});
+app.ticker.add(person.move, person);
+```
+
+---------
+下一节,我将介绍如何人物添加动作(行走、转身).
