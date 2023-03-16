@@ -1,5 +1,5 @@
 ---
-title: 三天时间用PixiJS做一个小游戏(1)
+title: 使用PixiJS做一个小游戏(1)
 tags: [canvas, pixijs]
 categories:
   - [game]
